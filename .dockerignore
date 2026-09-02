@@ -1,0 +1,13 @@
+.venv/
+.git/
+.pytest_cache/
+tests/
+docs/
+.vscode/
+infra/
+*.md
+!README.md
+.gitignore
+.dockerignore
+.python-version
+LICENSE
