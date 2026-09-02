@@ -530,7 +530,7 @@ async def test_register_creates_public_client(dynamo_client) -> None:
         )
     assert response.status_code == 201
     body = response.json()
-    assert body["client_id"].startswith("dcr-")
+    assert len(body["client_id"]) > 0
     assert body["token_endpoint_auth_method"] == "none"
     assert body["redirect_uris"] == ["https://client.example.com/callback"]
     assert "client_secret" not in body

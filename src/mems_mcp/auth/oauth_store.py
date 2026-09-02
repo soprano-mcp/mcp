@@ -130,11 +130,13 @@ class OAuthStore:
         """Registers a new OAuth client at runtime (RFC 7591 Dynamic Client
         Registration) - unlike the Terraform-seeded clients (zendesk-agent,
         claude-desktop, etc.), this lets a brand new MCP client self-register
-        without an admin manually adding a DynamoDB row first. The `dcr-`
-        prefix makes self-registered clients easy to spot against the seeded
-        ones in logs/DynamoDB.
+        without an admin manually adding a DynamoDB row first. `client_id` is
+        a plain random string (no distinguishing prefix) - the audit table's
+        `client_registered` event (see oauth_server.py's `handle_register`)
+        is what tells self-registered clients apart from seeded ones, not
+        the id format.
         """
-        client_id = f"dcr-{secrets.token_urlsafe(16)}"
+        client_id = secrets.token_urlsafe(24)
         self._clients_table.put_item(
             Item={
                 "client_id": client_id,
