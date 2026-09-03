@@ -27,7 +27,7 @@ import base64
 import logging
 import os
 import ssl
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -39,12 +39,19 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
+from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from mems_mcp.auth import oauth_server
 from mems_mcp.auth.mcp_oauth import JWTBearerTokenVerifier
-from mems_mcp.connection import Connection, connection_from_env, connection_from_headers
+from mems_mcp.connection import (
+    HEADER_DOMAIN_URL,
+    Connection,
+    connection_from_env,
+    connection_from_headers,
+    derive_domain_from_host,
+)
 from mems_mcp.exceptions import ConnectionConfigError, ServerConfigError
 from mems_mcp.observability import configure_logging, observe_tool
 from mems_mcp.models import (
@@ -265,7 +272,7 @@ def _connection(ctx: Context) -> Connection:
     request = ctx.request_context.request
     if request is not None:
         try:
-            return connection_from_headers(request.headers)
+            return connection_from_headers(_headers_with_derived_domain(request))
         except ConnectionConfigError:
             # Client can't send X-Soprano-* headers (e.g. Zendesk's MCP
             # connector has no custom-header support). Prefer reusing the
@@ -285,6 +292,29 @@ def _connection(ctx: Context) -> Connection:
     # No HTTP request available (e.g. stdio transport) - fall back to
     # SOPRANO_* environment variables set for the server process.
     return connection_from_env()
+
+
+def _headers_with_derived_domain(request: Request) -> Mapping[str, str]:
+    """Fills in `X-Soprano-Domain-Url` from this server's own `Host` header
+    (the `mcp-` naming convention, see `derive_domain_from_host`) when the
+    caller didn't send it explicitly - lets MCP_CLIENT_AUTH_MODE=none callers
+    on such a deployment skip configuring their own domain, while still
+    requiring their own X-Soprano-Auth-Method/credential headers as normal.
+    An explicit header always takes priority over derivation.
+    """
+    if request.headers.get(HEADER_DOMAIN_URL):
+        return request.headers
+    host = request.headers.get("host")
+    domain_url = derive_domain_from_host(host) if host else None
+    if domain_url is None:
+        return request.headers
+    # Starlette's Headers/MutableHeaders do case-insensitive lookups (ASGI
+    # transmits headers lowercased) - plain-dict-spreading request.headers
+    # would silently break every other X-Soprano-* header's case-insensitive
+    # lookup below.
+    headers = MutableHeaders(headers=request.headers)
+    headers[HEADER_DOMAIN_URL] = domain_url
+    return headers
 
 
 def _layer1_api_id() -> str | None:

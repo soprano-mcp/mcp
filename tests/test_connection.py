@@ -14,6 +14,7 @@ from mems_mcp.connection import (
     HEADER_USERNAME,
     connection_from_env,
     connection_from_headers,
+    derive_domain_from_host,
 )
 from mems_mcp.auth.api_key import ApiKeyAuth
 from mems_mcp.auth.basic import BasicAuth
@@ -28,6 +29,22 @@ DOMAIN = "https://aus.sopranodesign.com"
 def test_missing_domain_url_raises() -> None:
     with pytest.raises(ConnectionConfigError, match=HEADER_DOMAIN_URL):
         connection_from_headers({HEADER_AUTH_METHOD: "api_key"})
+
+
+def test_derive_domain_from_host_strips_mcp_prefix() -> None:
+    assert derive_domain_from_host("mcp-aus.sopranodesign.com") == DOMAIN
+
+
+def test_derive_domain_from_host_ignores_port() -> None:
+    assert derive_domain_from_host("mcp-aus.sopranodesign.com:8000") == DOMAIN
+
+
+def test_derive_domain_from_host_returns_none_without_mcp_prefix() -> None:
+    assert derive_domain_from_host("aus.sopranodesign.com") is None
+
+
+def test_derive_domain_from_host_returns_none_for_single_label_host() -> None:
+    assert derive_domain_from_host("localhost") is None
 
 
 def test_missing_auth_method_raises() -> None:

@@ -51,7 +51,7 @@ Supports [streamable HTTP transport](https://modelcontextprotocol.io/docs/learn/
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>/mcp"
+      "url": "<mems-mcp-server-url>/"
     }
   }
 }
@@ -66,9 +66,8 @@ Your MCP client will redirect you through an OAuth login/consent page, where you
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>/mcp",
+      "url": "<mems-mcp-server-url>",
       "headers": {
-        "X-Soprano-Domain-Url": "https://aus.sopranodesign.com",
         "X-Soprano-Auth-Method": "api_key",
         "X-Soprano-Api-Id": "${input:soprano-api-id}",
         "X-Soprano-Api-Key": "${input:soprano-api-key}"
@@ -78,12 +77,13 @@ Your MCP client will redirect you through an OAuth login/consent page, where you
 }
 ```
 
+`X-Soprano-Domain-Url` can usually be left out: if the server's own public hostname follows the `mcp-` naming convention (e.g. `mcp-aus.sopranodesign.com`), it derives your Soprano domain automatically by stripping that prefix (`https://aus.sopranodesign.com`). Set the header explicitly only if your deployment doesn't follow that convention, or to target a different domain than the one implied by the hostname.
+
 The `X-Soprano-*` headers above are for the `api_key` method — swap them for any of the other supported auth methods (see [Authentication](#-authentication) below) by using the matching header set instead:
 
 ```json
 // oauth2 (client credentials)
 "headers": {
-  "X-Soprano-Domain-Url": "https://aus.sopranodesign.com",
   "X-Soprano-Auth-Method": "oauth2",
   "X-Soprano-Client-Id": "${input:soprano-client-id}",
   "X-Soprano-Client-Secret": "${input:soprano-client-secret}"
@@ -93,7 +93,6 @@ The `X-Soprano-*` headers above are for the `api_key` method — swap them for a
 ```json
 // basic
 "headers": {
-  "X-Soprano-Domain-Url": "https://aus.sopranodesign.com",
   "X-Soprano-Auth-Method": "basic",
   "X-Soprano-Username": "${input:soprano-username}",
   "X-Soprano-Password": "${input:soprano-password}"
@@ -103,7 +102,6 @@ The `X-Soprano-*` headers above are for the `api_key` method — swap them for a
 ```json
 // legacy_oauth2
 "headers": {
-  "X-Soprano-Domain-Url": "https://aus.sopranodesign.com",
   "X-Soprano-Auth-Method": "legacy_oauth2",
   "X-Soprano-Username": "${input:soprano-username}",
   "X-Soprano-Password": "${input:soprano-password}"
@@ -207,7 +205,7 @@ Soprano credentials are supplied **per request**, never stored server-side or ca
 | Legacy OAuth2 | `SOPRANO_AUTH_METHOD=legacy_oauth2`, `SOPRANO_USERNAME`, `SOPRANO_PASSWORD` | `X-Soprano-Auth-Method: legacy_oauth2`, `X-Soprano-Username`, `X-Soprano-Password` |
 | Session cookie (`list_whatsapp_templates` only) | `SOPRANO_AUTH_METHOD=session_cookie`, `SOPRANO_SESSION_COOKIE` | `X-Soprano-Auth-Method: session_cookie`, `X-Soprano-Session-Cookie` |
 
-Both transports also require the target domain — `SOPRANO_DOMAIN_URL` (stdio) or `X-Soprano-Domain-Url` (HTTP), e.g. `https://aus.sopranodesign.com`.
+Both transports also require the target domain — `SOPRANO_DOMAIN_URL` (stdio) or `X-Soprano-Domain-Url` (HTTP), e.g. `https://aus.sopranodesign.com`. For `streamable-http`/`sse`, this header can be omitted if the server's own public hostname follows the `mcp-` naming convention (e.g. `mcp-aus.sopranodesign.com`) — the domain is then derived automatically by stripping that prefix.
 
 ## 🔒 Client Authentication (optional)
 

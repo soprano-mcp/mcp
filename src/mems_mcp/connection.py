@@ -57,6 +57,23 @@ class AuthMethod(str, Enum):
     SESSION_COOKIE = "session_cookie"
 
 
+def derive_domain_from_host(host: str) -> str | None:
+    """Derives the Soprano Connect API domain from this server's own request
+    `Host` header, following the `mcp-` naming convention this repo's infra
+    uses for its own deployments (see `infra/envs/*.env.tfvars`): the
+    server's public hostname prefixes `mcp-` onto the first label of the
+    underlying Connect API domain, e.g. `mcp-aus.sopranodesign.com` ->
+    `https://aus.sopranodesign.com`. Returns `None` if `host` doesn't follow
+    that convention (callers should fall back to requiring an explicit
+    `X-Soprano-Domain-Url` header/env var in that case).
+    """
+    hostname = host.split(":", 1)[0]
+    first_label, sep, rest = hostname.partition(".")
+    if not sep or not first_label.startswith("mcp-"):
+        return None
+    return f"https://{first_label[len('mcp-') :]}.{rest}"
+
+
 @dataclass(frozen=True, slots=True)
 class Connection:
     """Per-request target: which Soprano account/domain and how to auth to it."""
