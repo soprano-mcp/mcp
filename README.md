@@ -14,9 +14,11 @@ Connect any MCP-compatible client (Claude, VS Code Copilot, Cursor, etc.) to the
 
 ## 📋 Prerequisites
 
-- A [Soprano Design](https://www.sopranodesign.com/) Connect API account (sandbox or production), provisioned with a license for each channel you want to use
+- A [Soprano Design](https://www.sopranodesign.com/) Connect API account, provisioned with a license for each channel you want to use
 - Python 3.12+ and [uv](https://docs.astral.sh/uv/)
 - AI agent or application with MCP client support
+
+> Each tool/channel is only available if your Soprano account is subscribed to and provisioned for the corresponding service. Features outside your current subscription must be enabled via Soprano's onboarding or account management process before use.
 
 ### Table of Contents
 
@@ -40,7 +42,24 @@ The Soprano MCP server supports both of the transports defined by the MCP spec �
 
 ### Streamable HTTP
 
-Supports [streamable HTTP transport](https://modelcontextprotocol.io/docs/learn/architecture#transport-layer) for remote/deployable use (e.g. behind an ALB, Lambda Function URL, or API Gateway). Point your MCP client at the server's `/mcp` endpoint, replacing `<mems-mcp-server-url>` with wherever you've deployed it (or `http://127.0.0.1:8000` if running locally):
+Supports [streamable HTTP transport](https://modelcontextprotocol.io/docs/learn/architecture#transport-layer) for remote/deployable use (e.g. behind an ALB, Lambda Function URL, or API Gateway). Point your MCP client at the server's `/mcp` endpoint, replacing `<mems-mcp-server-url>` with wherever you've deployed it (or `http://127.0.0.1:8000` if running locally).
+
+**If the server has [Client Authentication](#-client-authentication-optional) (`MCP_CLIENT_AUTH_MODE=oauth2.1`) enabled with the Layer 2 fallback turned on** — the recommended setup for hosted deployments — no `X-Soprano-*` headers are needed at all:
+
+```json
+{
+  "servers": {
+    "mems-mcp (http)": {
+      "type": "http",
+      "url": "<mems-mcp-server-url>/mcp"
+    }
+  }
+}
+```
+
+Your MCP client will redirect you through an OAuth login/consent page, where you enter your Soprano Connect **API ID** and **API KEY** — that's the only credential you need to supply. The server uses it both to authenticate you (Layer 1) and, via the Layer 2 fallback, to authenticate its own calls to Soprano on your behalf, so per-request headers become unnecessary.
+
+**Otherwise** (`MCP_CLIENT_AUTH_MODE=none`, or you want to pass different Soprano credentials per request regardless), supply Layer 2 credentials explicitly via `X-Soprano-*` headers instead:
 
 ```json
 {
