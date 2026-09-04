@@ -24,11 +24,13 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import importlib.resources
 import logging
 import os
 import ssl
 import time
 from dataclasses import dataclass
+from string import Template
 from typing import Any
 from urllib.parse import urlencode
 
@@ -61,6 +63,15 @@ REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 3600
 CONNECT_TOKEN_TTL_SECONDS = 1800
 CONSENT_VERSION = "1"
 KEY_ID = "mems-mcp-oauth-1"
+
+# Loaded once at import time - static asset, never changes per-request. Kept as
+# a separate .html file (rather than an inline f-string) so the markup/CSS can
+# be edited/previewed without the Python-brace-escaping noise an f-string with
+# embedded CSS would need; string.Template's `$name` substitution needs no
+# escaping of the CSS's own literal `{`/`}`.
+_CONSENT_FORM_TEMPLATE = Template(
+    importlib.resources.files(__package__).joinpath("consent_form.html").read_text(encoding="utf-8")
+)
 
 
 def _load_signing_key() -> rsa.RSAPrivateKey:
@@ -289,23 +300,14 @@ def _login_consent_form(
     hidden_html = "\n".join(
         f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in hidden_fields.items()
     )
-    error_html = f'<p style="color:#b00020">{html.escape(error)}</p>' if error else ""
-    scope_html = "".join(f"<li>{html.escape(s)}</li>" for s in scope.split()) or "<li>(no specific scopes requested)</li>"
-    return f"""<!doctype html>
-<html><head><meta charset="utf-8"><title>Authorize {html.escape(client_name)}</title></head>
-<body style="font-family:sans-serif;max-width:420px;margin:48px auto">
-<h2>{html.escape(client_name)} wants to access your Soprano account</h2>
-<p>This app is requesting permission to:</p>
-<ul>{scope_html}</ul>
-{error_html}
-<form method="post">
-{hidden_html}
-<label>Connect API ID<br><input type="text" name="api_id" required autofocus></label><br><br>
-<label>Connect API Key<br><input type="password" name="api_key" required></label><br><br>
-<button type="submit" name="action" value="approve">Approve</button>
-<button type="submit" name="action" value="deny">Deny</button>
-</form>
-</body></html>"""
+    error_html = f'<div class="alert" role="alert">{html.escape(error)}</div>' if error else ""
+    scope_html = "".join(f"<li>{html.escape(s)}</li>" for s in scope.split()) or "<li>Basic account access</li>"
+    return _CONSENT_FORM_TEMPLATE.substitute(
+        client_name=html.escape(client_name),
+        scope_html=scope_html,
+        error_html=error_html,
+        hidden_html=hidden_html,
+    )
 
 
 async def handle_authorize_get(request: Request) -> Response:
