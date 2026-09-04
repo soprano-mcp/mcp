@@ -4,21 +4,25 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Authorize $client_name</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Urbanist:wght@500;600;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
     color-scheme: light;
-    --brand: #7a1f6e;
-    --brand-dark: #5c1754;
+    --brand: #F71A68;
+    --brand-dark: #D52060;
+    --brand-purple: #9747FF;
     --text: #1c1c1e;
     --muted: #6b6b70;
     --border: #d9d9de;
     --danger-bg: #fdecea;
     --danger-text: #b00020;
-    --bg: #f2f2f7;
+    --bg: #191A15;
   }
   * { box-sizing: border-box; }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: 'Urbanist', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     background: var(--bg);
     color: var(--text);
     margin: 0;
@@ -33,35 +37,30 @@
     max-width: 400px;
     background: #fff;
     border-radius: 16px;
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
     padding: 32px 28px;
   }
   .brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 20px;
+    margin-bottom: 24px;
   }
-  .brand-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--brand);
-    flex-shrink: 0;
-  }
-  .brand-name {
-    font-size: 13px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--muted);
+  .brand-mark {
+    height: 26px;
+    width: auto;
+    display: block;
   }
   h1 {
-    font-size: 19px;
+    font-family: 'Urbanist', sans-serif;
+    font-weight: 800;
+    font-size: 20px;
     line-height: 1.4;
     margin: 0 0 4px;
   }
-  h1 strong { color: var(--brand); }
+  h1 strong {
+    background: linear-gradient(90deg, var(--brand-purple), var(--brand));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
   .subtitle {
     font-size: 13px;
     color: var(--muted);
@@ -106,6 +105,7 @@
     width: 100%;
     padding: 10px 12px;
     font-size: 15px;
+    font-family: inherit;
     border: 1px solid var(--border);
     border-radius: 8px;
     outline: none;
@@ -113,7 +113,7 @@
   }
   input[type="text"]:focus, input[type="password"]:focus {
     border-color: var(--brand);
-    box-shadow: 0 0 0 3px rgba(122, 31, 110, 0.15);
+    box-shadow: 0 0 0 3px rgba(247, 26, 104, 0.15);
   }
   .actions {
     display: flex;
@@ -124,7 +124,8 @@
     flex: 1;
     padding: 11px 16px;
     font-size: 15px;
-    font-weight: 600;
+    font-weight: 700;
+    font-family: inherit;
     border-radius: 8px;
     border: 1px solid transparent;
     cursor: pointer;
@@ -132,10 +133,10 @@
   }
   button:active { transform: scale(0.98); }
   button[value="approve"] {
-    background: var(--brand);
+    background: linear-gradient(90deg, var(--brand-purple), var(--brand));
     color: #fff;
   }
-  button[value="approve"]:hover { background: var(--brand-dark); }
+  button[value="approve"]:hover { background: linear-gradient(90deg, var(--brand-purple), var(--brand-dark)); }
   button[value="deny"] {
     background: #fff;
     color: var(--muted);
@@ -152,7 +153,9 @@
 </head>
 <body>
 <div class="card">
-  <div class="brand"><span class="brand-dot"></span><span class="brand-name">Soprano Connect</span></div>
+  <div class="brand">
+    <img class="brand-mark" src="$logo_data_uri" alt="Soprano">
+  </div>
   <h1><strong>$client_name</strong> wants to access your account</h1>
   <p class="subtitle">This app is requesting permission to:</p>
   <ul class="scopes">$scope_html</ul>

@@ -70,8 +70,14 @@ KEY_ID = "mems-mcp-oauth-1"
 # embedded CSS would need; string.Template's `$name` substitution needs no
 # escaping of the CSS's own literal `{`/`}`.
 _CONSENT_FORM_TEMPLATE = Template(
-    importlib.resources.files(__package__).joinpath("consent_form.html").read_text(encoding="utf-8")
+    importlib.resources.files(__package__).joinpath("static", "consent_form.html").read_text(encoding="utf-8")
 )
+# Inlined as a data URI (not served via a separate route/static mount, which
+# this server has none of) - resized to a web-appropriate size, see
+# static/soprano-logo.png's own history for the original print-resolution asset.
+_LOGO_DATA_URI = "data:image/png;base64," + base64.b64encode(
+    importlib.resources.files(__package__).joinpath("static", "soprano-logo.png").read_bytes()
+).decode("ascii")
 
 
 def _load_signing_key() -> rsa.RSAPrivateKey:
@@ -290,6 +296,20 @@ class Layer2FallbackAuth:
         return {"Authorization": f"Bearer {token}"}
 
 
+# Human-readable consent copy per scope - deliberately describes the FULL
+# breadth of tool access each scope actually grants today (there's no
+# per-tool scope enforcement yet, see server.py:_build_client_auth), not
+# just the literal scope name, so the consent screen isn't misleading about
+# e.g. destructive tools (delete_whatsapp_media) or broadcast sends.
+_SCOPE_DESCRIPTIONS = {
+    "message.send": (
+        "Send messages across all channels (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) - "
+        "including batch and broadcast sends, and uploading or deleting WhatsApp media"
+    ),
+    "message.status.read": "Read message and batch delivery status, and list WhatsApp Business message templates",
+}
+
+
 def _login_consent_form(
     *,
     client_name: str,
@@ -301,12 +321,16 @@ def _login_consent_form(
         f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in hidden_fields.items()
     )
     error_html = f'<div class="alert" role="alert">{html.escape(error)}</div>' if error else ""
-    scope_html = "".join(f"<li>{html.escape(s)}</li>" for s in scope.split()) or "<li>Basic account access</li>"
+    scope_html = (
+        "".join(f"<li>{html.escape(_SCOPE_DESCRIPTIONS.get(s, s))}</li>" for s in scope.split())
+        or "<li>Basic account access</li>"
+    )
     return _CONSENT_FORM_TEMPLATE.substitute(
         client_name=html.escape(client_name),
         scope_html=scope_html,
         error_html=error_html,
         hidden_html=hidden_html,
+        logo_data_uri=_LOGO_DATA_URI,
     )
 
 
