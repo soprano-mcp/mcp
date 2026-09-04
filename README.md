@@ -27,6 +27,7 @@ Connect any MCP-compatible client (Claude, VS Code Copilot, Cursor, etc.) to the
   - [stdio](#stdio)
 - [✉️ Messaging Channels](#️-messaging-channels)
 - [🧰 Available Tools](#-available-tools)
+- [🤖 Agent Permission and Access Control](#-agent-permission-and-access-control)
 - [🔐 Authentication](#-authentication)
 - [🔒 Client Authentication (optional)](#-client-authentication-optional)
 - [🚀 Installation & Running](#-installation--running)
@@ -193,6 +194,10 @@ Anything not covered by a typed parameter can be sent via `send_message`'s `extr
 | `upload_whatsapp_media` | `POST /cgpapi/waba/media/{source}` |
 | `delete_whatsapp_media` | `DELETE /cgpapi/waba/media/{id}` |
 
+## 🤖 Agent Permission and Access Control
+
+Every tool is annotated with MCP's standard [tool annotations](https://modelcontextprotocol.io/specification/draft/server/tools#annotations) (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so a client can apply governance before invoking it — e.g. `send_message`/`send_batch`/`send_broadcast`/`upload_whatsapp_media` are non-read-only and reach an open world (real message delivery/spend), and `delete_whatsapp_media` is additionally flagged destructive. Since sending messages has real-world cost and reputational impact, apply your MCP client/host's permission controls (confirmation prompts, allow-lists, scoped credentials) to these tools rather than granting an agent unrestricted access — see the MCP spec's own [implementation considerations](https://modelcontextprotocol.io/specification/draft/server/tools#security-considerations) for guidance.
+
 ## 🔐 Authentication
 
 Soprano credentials are supplied **per request**, never stored server-side or cached between calls. How you supply them depends on transport (HTTP headers for `streamable-http`/`sse`, environment variables for `stdio`):
@@ -235,6 +240,8 @@ API ID/API KEY as their identity — the routes below are always mounted, and be
 - `POST /oauth/token` — `authorization_code` (+ PKCE), `client_credentials`, and `refresh_token` grants
 - `POST /oauth/register` — RFC 7591 Dynamic Client Registration; always registers a public (PKCE-secured) client, no `client_secret` issued
 - `GET /.well-known/oauth-authorization-server` / `GET /.well-known/jwks.json` — RFC 8414/7517 discovery metadata
+
+Most MCP clients discover required scopes automatically from that metadata. If yours doesn't, check its `scopes_supported` list at `{your-deployment-url}/.well-known/oauth-authorization-server` and configure them manually in the client.
 
 | Env var | Required | Description |
 |---|---|---|
