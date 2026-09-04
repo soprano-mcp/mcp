@@ -52,7 +52,7 @@ Supports [streamable HTTP transport](https://modelcontextprotocol.io/docs/learn/
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>/"
+      "url": "<mems-mcp-server-url>/mcp"
     }
   }
 }
@@ -67,7 +67,7 @@ Your MCP client will redirect you through an OAuth login/consent page, where you
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>",
+      "url": "<mems-mcp-server-url>/mcp",
       "headers": {
         "X-Soprano-Auth-Method": "api_key",
         "X-Soprano-Api-Id": "${input:soprano-api-id}",
