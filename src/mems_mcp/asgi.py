@@ -17,12 +17,19 @@ from __future__ import annotations
 
 from starlette.applications import Starlette
 
+from mems_mcp.asgi_utils import override_protected_resource_route
 from mems_mcp.server import mcp
 
 # streamable_http_app() must be called first - it lazily creates
 # mcp.session_manager, which the combined app's lifespan below depends on.
 _streamable_http_app = mcp.streamable_http_app()
 _sse_app = mcp.sse_app()
+
+# Only _streamable_http_app matters - _sse_app's own (unoverridden) copy of
+# the same path is unreachable dead weight since _streamable_http_app.routes
+# come first in the concatenation below, same as the /healthz duplication
+# noted in the comment there.
+override_protected_resource_route(_streamable_http_app)
 
 # Combines routes from both transports into one app: `/mcp` (Streamable HTTP,
 # the default/recommended transport) and `/sse` + `/messages` (legacy SSE,

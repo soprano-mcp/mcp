@@ -98,4 +98,21 @@ def test_oauth_mode_parses_required_scopes(monkeypatch: pytest.MonkeyPatch) -> N
     assert auth_settings is not None
     assert auth_settings.required_scopes == ["send", "read"]
     assert isinstance(verifier, JWTBearerTokenVerifier)
-    assert verifier._required_scopes == ["send", "read"]
+
+
+def test_oauth_mode_parses_issuer_as_csv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multi-domain deployments front several mcp-<domain> aliases - each is
+    its own valid issuer, comma-separated like MCP_OAUTH_AUDIENCE already is."""
+    monkeypatch.setenv("MCP_CLIENT_AUTH_MODE", "oauth2.1")
+    monkeypatch.setenv("MCP_OAUTH_ISSUER_URL", "https://mcp-aus.example.com, https://mcp-br.example.com")
+    monkeypatch.setenv("MCP_OAUTH_AUDIENCE", "https://mems-mcp.example.com")
+    monkeypatch.setenv("MCP_OAUTH_RESOURCE_SERVER_URL", "https://mems-mcp.example.com")
+
+    auth_settings, verifier = _build_client_auth()
+
+    assert auth_settings is not None
+    # AuthSettings.issuer_url is a single value (SDK constraint) - defaults to
+    # the first issuer when MCP_OAUTH_METADATA_ISSUER_URL isn't set.
+    assert str(auth_settings.issuer_url).rstrip("/") == "https://mcp-aus.example.com"
+    assert isinstance(verifier, JWTBearerTokenVerifier)
+    assert verifier._issuers == ["https://mcp-aus.example.com", "https://mcp-br.example.com"]

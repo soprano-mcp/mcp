@@ -44,7 +44,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from mems_mcp.auth.oauth_store import OAuthStore
-from mems_mcp.connection import Connection
+from mems_mcp.connection import Connection, derive_domain_from_host
 from mems_mcp.exceptions import SopranoAuthError
 
 logger = logging.getLogger(__name__)
@@ -212,11 +212,45 @@ def _audit(store: OAuthStore, **kwargs: Any) -> None:
 
 
 def _connect_domain_url() -> str:
+    """Platform-wide default Connect domain (MEMS_CONNECT_API_URL) - used when
+    the request's Host doesn't follow the mcp-<domain> convention (see
+    _connect_domain_url_from_request), or when no request is available.
+    """
     return os.environ.get("MEMS_CONNECT_API_URL", "").rstrip("/")
 
 
+def _connect_domain_url_from_request(request: Request | None) -> str:
+    """Derives the Soprano Connect domain to validate this login against from
+    the CURRENT request's own Host header (mcp-<domain> convention, see
+    connection.py:derive_domain_from_host) - lets one deployment front
+    several Soprano Connect domains, each with its own mcp-<domain> alias.
+    Falls back to the platform-wide MEMS_CONNECT_API_URL default when Host is
+    missing/doesn't match the convention (e.g. bare ALB/CloudFront access).
+    """
+    host = request.headers.get("host") if request is not None else None
+    derived = derive_domain_from_host(host) if host else None
+    return derived if derived is not None else _connect_domain_url()
+
+
 def _issuer_url() -> str:
+    """Platform-wide default issuer (MCP_OAUTH_RESOURCE_SERVER_URL) - used
+    when no request is available (or its Host header is missing).
+    """
     return os.environ.get("MCP_OAUTH_RESOURCE_SERVER_URL", "").rstrip("/")
+
+
+def _issuer_url_from_request(request: Request | None) -> str:
+    """This server's own issuer/resource-server URL for the CURRENT request -
+    simply the request's own Host header, so one deployment can front
+    several mcp-<domain> aliases, each a valid issuer/audience for tokens
+    minted against it (see mint_access_token: iss = aud = this value). Falls
+    back to the platform-wide MCP_OAUTH_RESOURCE_SERVER_URL default when Host
+    is missing.
+    """
+    host = request.headers.get("host") if request is not None else None
+    if host:
+        return f"https://{host.split(':', 1)[0]}"
+    return _issuer_url()
 
 
 def _oauth_store() -> OAuthStore:
@@ -248,12 +282,12 @@ def cache_layer2_credential(*, store: OAuthStore, api_id: str, api_key: str, tok
         store.put_layer2_cached_token(api_id=api_id, token=token, expires_at=int(time.time()) + CONNECT_TOKEN_TTL_SECONDS)
 
 
-def layer2_fallback_connection(api_id: str) -> Connection:
+def layer2_fallback_connection(api_id: str, *, request: Request | None = None) -> Connection:
     """Builds a Layer 2 `Connection` for a caller with no X-Soprano-* headers,
     reusing the real Connect identity it already proved at Layer 1 login -
     see server.py's `_connection()`.
     """
-    return Connection(domain_url=_connect_domain_url(), auth_strategy=Layer2FallbackAuth(api_id=api_id))
+    return Connection(domain_url=_connect_domain_url_from_request(request), auth_strategy=Layer2FallbackAuth(api_id=api_id))
 
 
 @dataclass(frozen=True, slots=True)
@@ -382,7 +416,7 @@ async def handle_authorize_post(request: Request) -> Response:
     api_key = str(form.get("api_key", ""))
     async with _http_client() as http_client:
         connect_token = await validate_connect_credentials(
-            domain_url=_connect_domain_url(), api_id=api_id, api_key=api_key, http_client=http_client
+            domain_url=_connect_domain_url_from_request(request), api_id=api_id, api_key=api_key, http_client=http_client
         )
     if connect_token is None:
         _audit(store, event_type="login_failed", api_id=api_id, client_id=client_id)
@@ -422,8 +456,10 @@ async def handle_authorize_post(request: Request) -> Response:
     return RedirectResponse(f"{redirect_uri}?{query}", status_code=302)
 
 
-def _token_response(*, api_id: str, client_id: str, scope: str, refresh_token: str | None = None) -> JSONResponse:
-    token = mint_access_token(issuer=_issuer_url(), api_id=api_id, client_id=client_id, scope=scope)
+def _token_response(
+    *, request: Request | None, api_id: str, client_id: str, scope: str, refresh_token: str | None = None
+) -> JSONResponse:
+    token = mint_access_token(issuer=_issuer_url_from_request(request), api_id=api_id, client_id=client_id, scope=scope)
     body: dict[str, Any] = {
         "access_token": token,
         "token_type": "Bearer",
@@ -465,7 +501,9 @@ def _reject(*, grant_type: str, error: str, description: str) -> JSONResponse:
     return JSONResponse({"error": error, "error_description": description}, status_code=400)
 
 
-async def _handle_authorization_code_grant(form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None) -> Response:
+async def _handle_authorization_code_grant(
+    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
+) -> Response:
     code = str(form.get("code", ""))
     redirect_uri = str(form.get("redirect_uri", ""))
     client_id = str(form.get("client_id", "")) or (basic_auth[0] if basic_auth else "")
@@ -490,16 +528,20 @@ async def _handle_authorization_code_grant(form: Any, store: OAuthStore, basic_a
     refresh_token = store.create_refresh_token(
         client_id=client_id, api_id=auth_code.api_id, scope=auth_code.scope, ttl_seconds=REFRESH_TOKEN_TTL_SECONDS
     )
-    return _token_response(api_id=auth_code.api_id, client_id=client_id, scope=auth_code.scope, refresh_token=refresh_token)
+    return _token_response(
+        request=request, api_id=auth_code.api_id, client_id=client_id, scope=auth_code.scope, refresh_token=refresh_token
+    )
 
 
-async def _handle_client_credentials_grant(form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None) -> Response:
+async def _handle_client_credentials_grant(
+    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
+) -> Response:
     api_id = str(form.get("client_id", "")) or (basic_auth[0] if basic_auth else "")
     api_key = str(form.get("client_secret", "")) or (basic_auth[1] if basic_auth else "")
     scope = str(form.get("scope", ""))
     async with _http_client() as http_client:
         connect_token = await validate_connect_credentials(
-            domain_url=_connect_domain_url(), api_id=api_id, api_key=api_key, http_client=http_client
+            domain_url=_connect_domain_url_from_request(request), api_id=api_id, api_key=api_key, http_client=http_client
         )
     if connect_token is None:
         _audit(store, event_type="login_failed", api_id=api_id, detail="client_credentials")
@@ -508,7 +550,7 @@ async def _handle_client_credentials_grant(form: Any, store: OAuthStore, basic_a
 
     _audit(store, event_type="token_issued", api_id=api_id, client_id=api_id, detail="client_credentials")
     cache_layer2_credential(store=store, api_id=api_id, api_key=api_key, token=connect_token)
-    return _token_response(api_id=api_id, client_id=api_id, scope=scope)
+    return _token_response(request=request, api_id=api_id, client_id=api_id, scope=scope)
 
 
 async def handle_token(request: Request) -> Response:
@@ -518,16 +560,18 @@ async def handle_token(request: Request) -> Response:
     basic_auth = _parse_basic_auth(request)
 
     if grant_type == "authorization_code":
-        return await _handle_authorization_code_grant(form, store, basic_auth)
+        return await _handle_authorization_code_grant(request, form, store, basic_auth)
     if grant_type == "client_credentials":
-        return await _handle_client_credentials_grant(form, store, basic_auth)
+        return await _handle_client_credentials_grant(request, form, store, basic_auth)
     if grant_type == "refresh_token":
-        return await _handle_refresh_token_grant(form, store, basic_auth)
+        return await _handle_refresh_token_grant(request, form, store, basic_auth)
     logger.warning("oauth token endpoint rejected unsupported grant_type: %r", grant_type)
     return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
 
 
-async def _handle_refresh_token_grant(form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None) -> Response:
+async def _handle_refresh_token_grant(
+    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
+) -> Response:
     """Lets authorization_code clients (Zendesk, VS Code) silently renew
     without repeating the interactive consent flow every
     ACCESS_TOKEN_TTL_SECONDS - see RefreshToken's docstring for why
@@ -565,7 +609,9 @@ async def _handle_refresh_token_grant(form: Any, store: OAuthStore, basic_auth: 
     new_refresh_token = store.create_refresh_token(
         client_id=client_id, api_id=record.api_id, scope=record.scope, ttl_seconds=REFRESH_TOKEN_TTL_SECONDS
     )
-    return _token_response(api_id=record.api_id, client_id=client_id, scope=record.scope, refresh_token=new_refresh_token)
+    return _token_response(
+        request=request, api_id=record.api_id, client_id=client_id, scope=record.scope, refresh_token=new_refresh_token
+    )
 
 
 # RFC 7591 grant types this server can actually satisfy for a dynamically
@@ -648,8 +694,8 @@ async def handle_register(request: Request) -> Response:
     )
 
 
-async def handle_authorization_server_metadata(_: Request) -> Response:
-    issuer = _issuer_url()
+async def handle_authorization_server_metadata(request: Request) -> Response:
+    issuer = _issuer_url_from_request(request)
     if not issuer:
         return JSONResponse({"error": "oauth2.1 not configured"}, status_code=404)
     return JSONResponse(

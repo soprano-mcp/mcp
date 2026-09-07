@@ -99,6 +99,45 @@ async def test_wrong_issuer_is_rejected() -> None:
     assert await verifier.verify_token(token) is None
 
 
+async def test_multiple_issuers_each_accepted() -> None:
+    """Multi-domain deployments front several mcp-<domain> aliases, each a
+    valid issuer for tokens minted against it - see oauth_server.py's
+    _issuer_url_from_request."""
+    private_key, public_key = _keypair()
+    issuers = ["https://mcp-aus.example.com", "https://mcp-br.example.com"]
+    fake_jwk_client = SimpleNamespace(get_signing_key_from_jwt=lambda token: SimpleNamespace(key=public_key))
+    verifier = JWTBearerTokenVerifier(issuer=issuers, audience=AUDIENCE, jwks_uri="unused", jwk_client=fake_jwk_client)
+
+    for issuer in issuers:
+        now = int(time.time())
+        token = jwt.encode(
+            {"iss": issuer, "aud": AUDIENCE, "sub": "user-123", "iat": now, "exp": now + 300},
+            private_key,
+            algorithm="RS256",
+        )
+        assert await verifier.verify_token(token) is not None
+
+
+async def test_issuer_not_in_accepted_list_is_rejected() -> None:
+    private_key, public_key = _keypair()
+    fake_jwk_client = SimpleNamespace(get_signing_key_from_jwt=lambda token: SimpleNamespace(key=public_key))
+    verifier = JWTBearerTokenVerifier(
+        issuer=["https://mcp-aus.example.com", "https://mcp-br.example.com"],
+        audience=AUDIENCE,
+        jwks_uri="unused",
+        jwk_client=fake_jwk_client,
+    )
+    now = int(time.time())
+    token = jwt.encode(
+        {"iss": "https://mcp-usa.example.com", "aud": AUDIENCE, "sub": "user-123", "iat": now, "exp": now + 300},
+        private_key,
+        algorithm="RS256",
+    )
+
+    assert await verifier.verify_token(token) is None
+
+
+
 async def test_signature_from_wrong_key_is_rejected() -> None:
     private_key, _ = _keypair()
     _, other_public_key = _keypair()

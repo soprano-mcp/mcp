@@ -103,7 +103,9 @@ def _build_client_auth() -> tuple[AuthSettings | None, TokenVerifier | None]:
       compliant OIDC/OAuth2 IdP - Auth0, Cognito, Okta, Keycloak, ...) is
       required on every request. Configured entirely via env vars so no
       particular IdP is hardcoded:
-        MCP_OAUTH_ISSUER_URL          (required) - the AS's issuer URL.
+        MCP_OAUTH_ISSUER_URL          (required) - the AS's issuer URL(s),
+                                      comma-separated if this deployment
+                                      fronts multiple mcp-<domain> aliases.
         MCP_OAUTH_AUDIENCE            (required) - expected token `aud` claim.
         MCP_OAUTH_RESOURCE_SERVER_URL (required) - this server's own public
                                       URL, used for RFC 9728 protected-resource
@@ -140,21 +142,21 @@ def _build_client_auth() -> tuple[AuthSettings | None, TokenVerifier | None]:
     if mode != "oauth2.1":
         raise ServerConfigError(f"Invalid MCP_CLIENT_AUTH_MODE '{mode}'. Must be 'none' or 'oauth2.1'")
 
-    issuer = _require_env("MCP_OAUTH_ISSUER_URL")
+    issuers = [i.strip() for i in _require_env("MCP_OAUTH_ISSUER_URL").split(",") if i.strip()]
     # Comma-separated - supports multiple app clients (e.g. one per
     # connecting service) issuing tokens for the same resource server.
     audiences = [a.strip() for a in _require_env("MCP_OAUTH_AUDIENCE").split(",") if a.strip()]
     resource_server_url = _require_env("MCP_OAUTH_RESOURCE_SERVER_URL")
-    jwks_uri = os.environ.get("MCP_OAUTH_JWKS_URI") or f"{issuer.rstrip('/')}/.well-known/jwks.json"
+    jwks_uri = os.environ.get("MCP_OAUTH_JWKS_URI") or f"{issuers[0].rstrip('/')}/.well-known/jwks.json"
     required_scopes = [s.strip() for s in os.environ.get("MCP_OAUTH_REQUIRED_SCOPES", "").split(",") if s.strip()]
 
     verifier = JWTBearerTokenVerifier(
-        issuer=issuer,
+        issuer=issuers,
         audience=audiences,
         jwks_uri=jwks_uri,
         required_scopes=required_scopes or None,
     )
-    metadata_issuer = os.environ.get("MCP_OAUTH_METADATA_ISSUER_URL") or issuer
+    metadata_issuer = os.environ.get("MCP_OAUTH_METADATA_ISSUER_URL") or issuers[0]
     auth_settings = AuthSettings(
         issuer_url=metadata_issuer,  # type: ignore[arg-type]
         resource_server_url=resource_server_url,  # type: ignore[arg-type]
@@ -285,7 +287,7 @@ def _connection(ctx: Context) -> Connection:
             if oauth_server.layer2_fallback_enabled():
                 api_id = _layer1_api_id()
                 if api_id is not None:
-                    return oauth_server.layer2_fallback_connection(api_id)
+                    return oauth_server.layer2_fallback_connection(api_id, request=request)
             if _has_default_soprano_env():
                 return connection_from_env()
             raise

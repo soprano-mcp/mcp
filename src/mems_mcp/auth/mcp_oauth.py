@@ -39,14 +39,18 @@ class JWTBearerTokenVerifier:
     def __init__(
         self,
         *,
-        issuer: str,
+        issuer: str | list[str],
         audience: str | list[str],
         jwks_uri: str,
         required_scopes: list[str] | None = None,
         algorithms: list[str] | None = None,
         jwk_client: PyJWKClient | None = None,
     ) -> None:
-        self._issuer = issuer
+        # Multiple accepted issuers - e.g. one per mcp-<domain> alias when a
+        # single deployment fronts several Soprano Connect domains (each
+        # domain's own Host header is a valid issuer/audience - see
+        # oauth_server.py's per-request issuer derivation).
+        self._issuers = [issuer] if isinstance(issuer, str) else list(issuer)
         # Multiple accepted audiences - e.g. several Cognito app clients (one
         # per connecting service) all calling this same resource server.
         self._audiences = [audience] if isinstance(audience, str) else list(audience)
@@ -97,7 +101,7 @@ class JWTBearerTokenVerifier:
             signing_key.key,
             algorithms=self._algorithms,
             audience=self._audiences if has_aud else None,
-            issuer=self._issuer,
+            issuer=self._issuers,
             options={"require": ["exp", "iat"], "verify_aud": has_aud},
         )
         if not has_aud and claims.get("client_id") not in self._audiences:

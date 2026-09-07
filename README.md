@@ -236,9 +236,9 @@ authentication on incoming MCP requests (Layer 1 — client → this server), of
 | Env var | Required | Description |
 |---|---|---|
 | `MCP_CLIENT_AUTH_MODE` | — | `none` (default) or `oauth2.1` |
-| `MCP_OAUTH_ISSUER_URL` | if `oauth2.1` | Your Authorization Server's issuer URL |
-| `MCP_OAUTH_AUDIENCE` | if `oauth2.1` | Expected token `aud` claim |
-| `MCP_OAUTH_RESOURCE_SERVER_URL` | if `oauth2.1` | This server's own public URL |
+| `MCP_OAUTH_ISSUER_URL` | if `oauth2.1` | Your Authorization Server's issuer URL(s) — comma-separated if this deployment fronts multiple domains. With the built-in self-hosted AS, this is derived automatically per-request from the caller's own `Host` header and can be left unset. |
+| `MCP_OAUTH_AUDIENCE` | if `oauth2.1` | Expected token `aud` claim(s), comma-separated — same per-request derivation as above with the self-hosted AS. |
+| `MCP_OAUTH_RESOURCE_SERVER_URL` | if `oauth2.1` | This server's own public URL — fallback default when a request's `Host` doesn't match any configured domain. |
 | `MCP_OAUTH_JWKS_URI` | optional | Defaults to `{issuer}/.well-known/jwks.json` |
 | `MCP_OAUTH_REQUIRED_SCOPES` | optional | Comma-separated required scopes |
 
@@ -252,7 +252,7 @@ separate IdP, this server can act as its own Authorization Server, using the cal
 API ID/API KEY as their identity — the routes below are always mounted, and become useful once
 `MCP_CLIENT_AUTH_MODE=oauth2.1` points `MCP_OAUTH_ISSUER_URL` at this same deployment:
 
-- `GET`/`POST /oauth/authorize` — login+consent form, validating the API ID/API KEY against `MEMS_CONNECT_API_URL`
+- `GET`/`POST /oauth/authorize` — login+consent form, validating the API ID/API KEY against the Connect API domain derived from the request's own `Host` header (if it follows the `mcp-` convention), falling back to `MEMS_CONNECT_API_URL` otherwise
 - `POST /oauth/token` — `authorization_code` (+ PKCE), `client_credentials`, and `refresh_token` grants
 - `POST /oauth/register` — RFC 7591 Dynamic Client Registration; always registers a public (PKCE-secured) client, no `client_secret` issued
 - `GET /.well-known/oauth-authorization-server` / `GET /.well-known/jwks.json` — RFC 8414/7517 discovery metadata
@@ -261,7 +261,7 @@ Most MCP clients discover required scopes automatically from that metadata. If y
 
 | Env var | Required | Description |
 |---|---|---|
-| `MEMS_CONNECT_API_URL` | Yes | Fixed Connect API domain used to validate the API ID/API KEY entered at login |
+| `MEMS_CONNECT_API_URL` | Yes | Fallback Connect API domain, used when a request's `Host` doesn't derive one via the `mcp-` convention (e.g. multiple domains fronted by one deployment) |
 | `MCP_OAUTH_SIGNING_KEY` (or `MCP_OAUTH_SIGNING_KEY_SECRET_ARN` for an AWS Secrets Manager ARN) | Recommended | PEM RSA private key used to sign issued JWTs; an ephemeral key is generated (with a warning) if neither is set — fine for a single local process only |
 | `MCP_OAUTH_CLIENTS_TABLE` / `_CODES_TABLE` / `_CONSENTS_TABLE` / `_AUDIT_TABLE` / `_REFRESH_TOKENS_TABLE` | optional | DynamoDB table names backing client/code/consent/audit/refresh-token storage (default to `mems-mcp-oauth-*`) — requires AWS credentials for `boto3` |
 | `MCP_OAUTH_LAYER2_FALLBACK` / `MCP_OAUTH_LAYER2_CREDENTIALS_TABLE` | optional | Lets clients that can't send `X-Soprano-*` headers reuse the Connect identity they authenticated with at Layer 1 for Layer 2 calls too (opt-in; caches the real API KEY server-side, TTL-bounded) |

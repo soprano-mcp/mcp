@@ -230,6 +230,58 @@ async def test_full_authorization_code_flow_with_pkce(dynamo_client) -> None:
 
 
 @respx.mock
+async def test_client_credentials_grant_derives_domain_and_issuer_from_host(dynamo_client) -> None:
+    """Multi-domain: a request arriving at a DIFFERENT mcp-<domain> alias than
+    the env var defaults (CONNECT_DOMAIN/ISSUER) must validate against, and
+    mint a token for, THAT domain instead - proving per-request Host-header
+    derivation (oauth_server.py's _connect_domain_url_from_request/
+    _issuer_url_from_request) takes priority over the platform-wide env var
+    fallback, not just matching it by coincidence (as every other test in
+    this file does, since ASGITransport's base_url happens to equal ISSUER).
+    """
+    other_domain = "https://br.sopranodesign.com"
+    other_issuer = "https://mcp-br.sopranodesign.com"
+    respx.post(f"{other_domain}/cgpapi/auth/token").mock(
+        return_value=httpx.Response(200, json={"accessToken": "real-connect-token", "tokenType": "Bearer"})
+    )
+    # Sanity check the mock is domain-specific - CONNECT_DOMAIN's endpoint is
+    # deliberately NOT mocked, so a wrongly-derived domain would 500/raise.
+
+    async with await _client() as client:
+        response = await client.post(
+            "/oauth/token",
+            headers={"Host": other_issuer.removeprefix("https://")},
+            data={
+                "grant_type": "client_credentials",
+                "client_id": "12345",
+                "client_secret": "secret",
+                "scope": "message.send",
+            },
+        )
+        assert response.status_code == 200
+        access_token = response.json()["access_token"]
+
+        jwks_response = await client.get("/.well-known/jwks.json")
+    jwk = _public_key_from_jwks(jwks_response.json())
+    claims = jwt.decode(access_token, jwk.key, algorithms=["RS256"], issuer=other_issuer, audience=other_issuer)
+    assert claims["iss"] == other_issuer
+    assert claims["aud"] == other_issuer
+
+
+@respx.mock
+async def test_authorization_server_metadata_derives_issuer_from_host(dynamo_client) -> None:
+    other_issuer = "https://mcp-br.sopranodesign.com"
+    async with await _client() as client:
+        response = await client.get(
+            "/.well-known/oauth-authorization-server", headers={"Host": other_issuer.removeprefix("https://")}
+        )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["issuer"] == other_issuer
+    assert body["authorization_endpoint"] == f"{other_issuer}/oauth/authorize"
+
+
+@respx.mock
 async def test_refresh_token_grant_issues_new_access_and_refresh_token(dynamo_client) -> None:
     store = OAuthStore(dynamodb_resource=dynamo_client)
     refresh_token = store.create_refresh_token(
