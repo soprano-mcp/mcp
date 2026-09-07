@@ -1,33 +1,18 @@
 # Soprano Connect MCP Server
 
-Soprano Connect MCP Server enables you to build AI agents that can communicate, engage customers, and manage communications workflows through the Soprano Connect platform using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro).
+<img src="images/soprano-logo.png" alt="Soprano Logo" height="32" style="display:inline;vertical-align:middle;margin:12px 0;">
 
-The Soprano Connect MCP Server enables AI assistants, copilots, autonomous agents, and enterprise applications to securely interact with Soprano Connect's global CPaaS platform. Using natural language, AI agents can send messages, manage customer data, administer accounts, and orchestrate communications across multiple channels in a controlled, enterprise-grade environment.
+Soprano MCP is a [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs) server that exposes the [Soprano Design Connect API](https://www.sopranodesign.com/) — a multi-channel messaging platform — as tools for AI agents.
 
-No complex API integrations. No custom middleware. Simply connect any MCP-compatible client (Claude, VS Code Copilot, Cursor, etc.) to the Soprano MCP server and let your agent send messages and check delivery status across multiple channels — all through natural language.
+Connect any MCP-compatible client (Claude, VS Code Copilot, Cursor, etc.) to the Soprano MCP server and let your agent send messages and check delivery status across 7 channels — all through natural language.
 
----
+## 🛠️ Features
 
-## Why Soprano MCP?
-
-Soprano Connect MCP transforms communications capabilities into AI-native tools that can be consumed directly by AI agents. With Soprano MCP, AI agents can:
-
-- Send omnichannel communications across all channels supported by Soprano Connect platform
-- Manage contacts and customer contact lists
-- Query messaging history and delivery status
-- Automate customer engagement workflows
-- Build AI-powered communications use cases without custom integration code
-- Operate within an enterprise-grade security and governance framework
-
----
-
-## Key Features
-
-- Send communications through any channel supported by Soprano Connect such as SMS, RCS, WhatsApp, Viber, Email, Voice, Mobile Push
-- Rich content per channel — WhatsApp (media, interactive buttons/lists, templates, location, reactions), RCS (rich cards, carousels, suggestions), Voice (text-to-speech, pre-recorded audio, Call Control Objects), Push Notification
-- Batch and broadcast sending, plus single/batch message status lookups
-- WhatsApp Business (WABA) template listing, and media upload/delete
-- Pluggable upstream (Soprano) authentication — API Key, OAuth2 (client credentials), Basic, Legacy OAuth2, and a session-cookie outlier for WABA templates — selected per request, credentials supplied by the caller and never stored server-side
+- ✉️ Send messages using channels like SMS, WhatsApp, RCS, Email, Voice, Viber, Mobile Push
+- ✉️ Rich content per channel — WhatsApp (media, interactive buttons/lists, templates, location, reactions), RCS (rich cards, carousels, suggestions), Voice (text-to-speech, pre-recorded audio, Call Control Objects), Push Notifications
+- ✉️ Batch and broadcast sending, plus single/batch message status lookups
+- ✉️ WhatsApp Business (WABA) template listing, and media upload/delete
+- 🔐 Pluggable upstream (Soprano) authentication — API Key, OAuth2 (client credentials), Basic, Legacy OAuth2, and a session-cookie outlier for WABA templates — selected per request, credentials supplied by the caller and never stored server-side
 
 ## 📋 Prerequisites
 
@@ -69,7 +54,7 @@ Supports [streamable HTTP transport](https://modelcontextprotocol.io/docs/learn/
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>/mcp"
+      "url": "<mems-mcp-server-url>/"
     }
   }
 }
@@ -84,7 +69,7 @@ Your MCP client will redirect you through an OAuth login/consent page, where you
   "servers": {
     "mems-mcp (http)": {
       "type": "http",
-      "url": "<mems-mcp-server-url>/mcp",
+      "url": "<mems-mcp-server-url>",
       "headers": {
         "X-Soprano-Auth-Method": "api_key",
         "X-Soprano-Api-Id": "${input:soprano-api-id}",
