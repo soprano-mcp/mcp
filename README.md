@@ -2,6 +2,8 @@
 
 <img src="images/soprano-logo.png" alt="Soprano Logo" height="32" style="display:inline;vertical-align:middle;margin:12px 0;">
 
+[![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/soprano-mcp/mcp)
+
 Soprano Connect MCP Server enables you to build AI agents that can communicate, engage customers, and manage communications workflows through the Soprano Connect platform using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro).
 
 The Soprano Connect MCP Server enables AI assistants, copilots, autonomous agents, and enterprise applications to securely interact with Soprano Connect's global CPaaS platform. Using natural language, AI agents can send messages, manage customer data, administer accounts, and orchestrate communications across multiple channels in a controlled, enterprise-grade environment.
