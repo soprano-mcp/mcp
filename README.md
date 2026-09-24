@@ -6,7 +6,7 @@
 
 [![Listed on mcpservers.org](https://mcpservers.org/badge.svg)](https://mcpservers.org/servers/soprano-mcp/mcp)
 
-Soprano Connect MCP Server enables you to build AI agents that can communicate, engage customers, and manage communications workflows through the Soprano Connect platform using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro).
+Soprano Connect MCP Server enables you to build AI agents that can communicate, engage customers, and manage communications workflows through Soprano Connect — a global Communications Platform as a Service (CPaaS) — using the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro).
 
 The Soprano Connect MCP Server enables AI assistants, copilots, autonomous agents, and enterprise applications to securely interact with Soprano Connect's global CPaaS platform. Using natural language, AI agents can send messages, manage customer data, administer accounts, and orchestrate communications across multiple channels in a controlled, enterprise-grade environment.
 
@@ -34,7 +34,7 @@ Soprano Connect MCP transforms communications capabilities into AI-native tools 
 ## 📋 Prerequisites
 
 - A [Soprano Design](https://www.sopranodesign.com/) Connect API account, provisioned with a license for each channel you want to use
-- Python 3.12+ and [uv](https://docs.astral.sh/uv/)
+- Python 3.12+ and [uv](https://docs.astral.sh/uv/) — only needed for the [stdio](#stdio) transport (running the server locally as a subprocess). Connecting to an already-deployed [streamable HTTP](#streamable-http) server needs no local Python install at all
 - AI agent or application with MCP client support
 
 > Each tool/channel is only available if your Soprano account is subscribed to and provisioned for the corresponding service. Features outside your current subscription must be enabled via Soprano's onboarding or account management process before use.
@@ -203,16 +203,16 @@ Anything not covered by a typed parameter can be sent via `send_message`'s `extr
 
 ## 🧰 Available Tools
 
-| Tool | Maps to |
-|---|---|
-| `send_message` | `POST /cgpapi/messages/{channel}` |
-| `get_message_status` | `GET /cgpapi/messages/{channel}/{id}` |
-| `send_batch` | `POST /cgpapi/batch/messages` |
-| `get_batch_status` | `POST /cgpapi/batch/messages/status` |
-| `send_broadcast` | `POST /cgpapi/broadcast/sms` |
-| `list_whatsapp_templates` | `GET /cgpapi/waba/templates` |
-| `upload_whatsapp_media` | `POST /cgpapi/waba/media/{source}` |
-| `delete_whatsapp_media` | `DELETE /cgpapi/waba/media/{id}` |
+| Tool | Description | Maps to |
+|---|---|---|
+| **`send_message`** | Send a single real-time message on any supported channel (SMS, WhatsApp, RCS, Email, Voice, Viber, Push).<br>_Example prompt_: "Send a WhatsApp message to +33612345678 letting them know their order has shipped." | `POST /cgpapi/messages/{channel}` |
+| **`get_message_status`** | Check the delivery status of a single previously-sent message.<br>_Example prompt_: "What's the delivery status of SMS message 123456?" | `GET /cgpapi/messages/{channel}/{id}` |
+| **`send_batch`** | Send multiple messages (optionally across different channels) in one call.<br>_Example prompt_: "Send this appointment reminder as SMS to these 20 customers." | `POST /cgpapi/batch/messages` |
+| **`get_batch_status`** | Check delivery status for multiple SMS messages at once.<br>_Example prompt_: "Check the delivery status of these 10 SMS message IDs." | `POST /cgpapi/batch/messages/status` |
+| **`send_broadcast`** | Send a broadcast SMS order to lists, contacts, and/or groups.<br>_Example prompt_: "Broadcast a storm warning SMS to everyone in the 'North Region' contact list." | `POST /cgpapi/broadcast/sms` |
+| **`list_whatsapp_templates`** | List approved WhatsApp Business (WABA) message templates.<br>_Example prompt_: "What WhatsApp templates do we have approved for order confirmations?" | `GET /cgpapi/waba/templates` |
+| **`upload_whatsapp_media`** | Upload media (image/video/document/audio) for use in WhatsApp messages.<br>_Example prompt_: "Upload this product image so I can send it via WhatsApp." | `POST /cgpapi/waba/media/{source}` |
+| **`delete_whatsapp_media`** | Delete previously uploaded WhatsApp media.<br>_Example prompt_: "Delete the WhatsApp media file we just uploaded." | `DELETE /cgpapi/waba/media/{id}` |
 
 ## 🤖 Agent Permission and Access Control
 
