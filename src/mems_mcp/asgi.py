@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from starlette.applications import Starlette
 
-from mems_mcp.asgi_utils import override_protected_resource_route
+from mems_mcp.asgi_utils import build_openai_apps_challenge_route, override_protected_resource_route
 from mems_mcp.server import mcp
 
 # streamable_http_app() must be called first - it lazily creates
@@ -35,12 +35,13 @@ override_protected_resource_route(_streamable_http_app)
 # the default/recommended transport) and `/sse` + `/messages` (legacy SSE,
 # for clients that don't support Streamable HTTP yet) - plus our own
 # `/healthz` custom route, present in both apps' route lists already
-# (harmless duplication, Starlette matches the first).
+# (harmless duplication, Starlette matches the first), and the OpenAI Apps
+# SDK domain-verification route (see asgi_utils.build_openai_apps_challenge_route).
 # Only the Streamable HTTP session manager needs an explicit lifespan - SSE
 # connections run per-request via `sse.connect_sse()`, no background task.
 app = Starlette(
     debug=_streamable_http_app.debug,
-    routes=_streamable_http_app.routes + _sse_app.routes,
+    routes=_streamable_http_app.routes + _sse_app.routes + [build_openai_apps_challenge_route()],
     middleware=_streamable_http_app.user_middleware,
     lifespan=lambda _: mcp.session_manager.run(),
 )

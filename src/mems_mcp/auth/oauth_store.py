@@ -1,9 +1,8 @@
 """DynamoDB-backed storage for the self-hosted OAuth Authorization Server
 (Layer 1 auth) - see `oauth_server.py` and `MCP_OAuth_Zendesk_PRD.md`.
 
-Tables (names configurable via env vars - provision matching tables via your
-own deployment tooling): registered OAuth clients, short-lived authorization
-codes
+Tables (names configurable via env vars, see infra/oauth_server.tf for
+matching schema): registered OAuth clients, short-lived authorization codes
 (redeemable multiple times within their own short TTL - see
 `consume_auth_code`), per-(api_id, client) consent records, an audit log,
 a Layer 2 credential cache (opt-in), and long-lived refresh tokens (for the
@@ -85,11 +84,10 @@ class RefreshToken:
 
 
 class OAuthStore:
-    """Thin wrapper around the 6 DynamoDB tables (4 core + 2 opt-in: Layer 2
-    credential cache, refresh tokens). Table names default to
-    `mems-mcp-oauth-{clients,codes,consents,audit,layer2-credentials,refresh-tokens}`,
-    overridable per-deployment via env vars so each MEMS instance can point
-    at its own tables.
+    """Thin wrapper around the 4 DynamoDB tables. Table names default to
+    `mems-mcp-oauth-{clients,codes,consents,audit}` (matching
+    infra/oauth_server.tf), overridable per-deployment via env vars so each
+    MEMS instance can point at its own tables.
     """
 
     def __init__(self, *, dynamodb_resource: Any | None = None) -> None:

@@ -1,0 +1,135 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.soprano-mcp/mems-mcp",
+  "title": "Soprano Connect MCP Server",
+  "description": "MCP server exposing the Soprano Design Connect API (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) as tools for AI agents",
+  "repository": {
+    "url": "https://github.com/soprano-mcp/mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://mcp-{domain}.sopranodesign.com/mcp",
+      "variables": {
+        "domain": {
+          "description": "Soprano Connect domain label for your platform's deployment, e.g. 'ro' for ro.sopranodesign.com",
+          "isRequired": true
+        }
+      },
+      "headers": [
+        {
+          "name": "X-Soprano-Domain-Url",
+          "description": "Base URL of the Soprano Connect API domain to target",
+          "isRequired": true
+        },
+        {
+          "name": "X-Soprano-Auth-Method",
+          "description": "Soprano auth method: api_key | oauth2 | basic | legacy_oauth2 | session_cookie",
+          "isRequired": true
+        },
+        {
+          "name": "X-Soprano-Api-Id",
+          "description": "API ID (api_key auth method)",
+          "isRequired": false
+        },
+        {
+          "name": "X-Soprano-Api-Key",
+          "description": "API key (api_key auth method)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "X-Soprano-Client-Id",
+          "description": "OAuth2 client ID (oauth2/legacy_oauth2 auth methods)",
+          "isRequired": false
+        },
+        {
+          "name": "X-Soprano-Client-Secret",
+          "description": "OAuth2 client secret (oauth2/legacy_oauth2 auth methods)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "X-Soprano-Username",
+          "description": "Username (basic auth method)",
+          "isRequired": false
+        },
+        {
+          "name": "X-Soprano-Password",
+          "description": "Password (basic auth method)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "X-Soprano-Session-Cookie",
+          "description": "Session cookie (session_cookie auth method, list_whatsapp_templates only)",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mems-mcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SOPRANO_DOMAIN_URL",
+          "description": "Base URL of the Soprano Connect API domain to target",
+          "isRequired": true
+        },
+        {
+          "name": "SOPRANO_AUTH_METHOD",
+          "description": "Soprano auth method: api_key | oauth2 | basic | legacy_oauth2 | session_cookie",
+          "isRequired": true
+        },
+        {
+          "name": "SOPRANO_API_ID",
+          "description": "API ID (api_key auth method)",
+          "isRequired": false
+        },
+        {
+          "name": "SOPRANO_API_KEY",
+          "description": "API key (api_key auth method)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SOPRANO_CLIENT_ID",
+          "description": "OAuth2 client ID (oauth2/legacy_oauth2 auth methods)",
+          "isRequired": false
+        },
+        {
+          "name": "SOPRANO_CLIENT_SECRET",
+          "description": "OAuth2 client secret (oauth2/legacy_oauth2 auth methods)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SOPRANO_USERNAME",
+          "description": "Username (basic auth method)",
+          "isRequired": false
+        },
+        {
+          "name": "SOPRANO_PASSWORD",
+          "description": "Password (basic auth method)",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "SOPRANO_SESSION_COOKIE",
+          "description": "Session cookie (session_cookie auth method, list_whatsapp_templates only)",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
+    }
+  ]
+}

@@ -13,7 +13,7 @@ import os
 
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.routing import Route
 
 
@@ -29,7 +29,12 @@ async def _protected_resource_metadata(request: Request) -> Response:
     `_issuer_url_from_request`, which this mirrors).
     """
     host = request.headers.get("host", "")
-    resource = f"https://{host}/" if host else ""
+    # No trailing slash - RFC 8414 clients treat any path component (even a
+    # bare "/") as requiring "/.well-known/..." to be inserted BEFORE it,
+    # which 307-redirects here (Starlette's trailing-slash redirect) to an
+    # http:// URL (CloudFront->ALB is a plain HTTP hop internally) that then
+    # 403s - breaking spec-compliant clients' AS metadata discovery.
+    resource = f"https://{host}" if host else ""
     required_scopes = [s.strip() for s in os.environ.get("MCP_OAUTH_REQUIRED_SCOPES", "").split(",") if s.strip()]
     return JSONResponse(
         {
@@ -39,6 +44,45 @@ async def _protected_resource_metadata(request: Request) -> Response:
             "scopes_supported": required_scopes or None,
         }
     )
+
+
+def _openai_apps_challenge_tokens() -> dict[str, str]:
+    """Parses OPENAI_APPS_CHALLENGE_TOKENS ("host=token,host2=token2") for
+    deployments verifying more than one mcp-<label> alias (e.g. a
+    mems_domains platform) at once. Malformed/empty entries are skipped.
+    """
+    raw = os.environ.get("OPENAI_APPS_CHALLENGE_TOKENS", "")
+    tokens: dict[str, str] = {}
+    for pair in raw.split(","):
+        host, sep, token = pair.strip().partition("=")
+        if sep and host and token:
+            tokens[host] = token
+    return tokens
+
+
+async def _openai_apps_challenge(request: Request) -> Response:
+    """Serves the OpenAI Apps SDK domain-verification token at the
+    origin-root well-known path OpenAI polls ("Challenge Base URL" ->
+    /.well-known/openai-apps-challenge, see the Apps SDK submission flow).
+    Looks up OPENAI_APPS_CHALLENGE_TOKENS by request Host first (multi-domain
+    deployments), falling back to the single-token OPENAI_APPS_CHALLENGE_TOKEN
+    env var. 404s (like any other unmounted path) if neither is configured
+    for this Host, so this is a no-op until a verification is in progress.
+    """
+    host = request.headers.get("host", "").split(":", 1)[0]
+    token = _openai_apps_challenge_tokens().get(host) or os.environ.get("OPENAI_APPS_CHALLENGE_TOKEN", "")
+    if not token:
+        return Response(status_code=404)
+    return PlainTextResponse(token)
+
+
+def build_openai_apps_challenge_route() -> Route:
+    """Route for OpenAI Apps SDK domain verification - not auth-protected
+    (must be publicly fetchable pre-verification), always registered but
+    404s unless OPENAI_APPS_CHALLENGE_TOKEN(S) is set (see
+    _openai_apps_challenge above).
+    """
+    return Route("/.well-known/openai-apps-challenge", endpoint=_openai_apps_challenge, methods=["GET"])
 
 
 def override_protected_resource_route(app: Starlette) -> None:

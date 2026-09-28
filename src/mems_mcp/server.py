@@ -418,7 +418,7 @@ async def send_message(
     return result
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 @observe_tool
 async def get_message_status(ctx: Context, channel: ChannelLiteral, message_id: str) -> dict[str, Any]:
     """Query the status of a single previously-sent message.
@@ -445,7 +445,7 @@ async def send_batch(ctx: Context, messages: list[dict[str, Any]]) -> list[dict[
     return await _client(ctx).send_batch(connection, payloads)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 @observe_tool
 async def get_batch_status(ctx: Context, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Query the status of multiple messages at once.
@@ -492,7 +492,7 @@ async def send_broadcast(
     return await _client(ctx).send_broadcast(connection, request.to_payload())
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
 @observe_tool
 async def list_whatsapp_templates(ctx: Context) -> Any:
     """List approved WhatsApp Business (WABA) message templates.

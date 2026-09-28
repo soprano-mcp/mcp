@@ -50,8 +50,8 @@ async def test_override_derives_resource_and_authorization_servers_from_host() -
 
     assert response.status_code == 200
     body = response.json()
-    assert body["resource"] == "https://mcp-br.example.com/"
-    assert body["authorization_servers"] == ["https://mcp-br.example.com/"]
+    assert body["resource"] == "https://mcp-br.example.com"
+    assert body["authorization_servers"] == ["https://mcp-br.example.com"]
 
 
 async def test_override_is_noop_when_route_absent() -> None:

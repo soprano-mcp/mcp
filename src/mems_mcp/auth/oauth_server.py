@@ -13,10 +13,10 @@ credentials.
 This is deliberately NOT a general-purpose OAuth library: it implements
 exactly the PRD's Phase 1 MVP surface (authorize/token/discovery/JWKS) for
 one MCP server instance backed by one fixed Connect API domain per
-deployment (`MEMS_CONNECT_API_URL` - each deployment targets its own Connect
-domain). The real Connect access token obtained during credential validation
-is discarded immediately - never returned to the OAuth caller (PRD section
-9: "must not expose Connect tokens directly").
+deployment (`MEMS_CONNECT_API_URL` - each MEMS gets its own deployment, see
+infra/envs/*.env.tfvars). The real Connect access token obtained during
+credential validation is discarded immediately - never returned to the OAuth
+caller (PRD section 9: "must not expose Connect tokens directly").
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ import time
 from dataclasses import dataclass
 from string import Template
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 import boto3
 import httpx
@@ -84,9 +84,9 @@ def _load_signing_key() -> rsa.RSAPrivateKey:
     """Loads the RS256 private key, preferring (in order):
 
     1. `MCP_OAUTH_SIGNING_KEY_SECRET_ARN` - fetched from AWS Secrets Manager
-       at process start (populated by your own deployment tooling, e.g. an
-       RSA key generated once and stored there) - the secure, production
-       path.
+       at process start (see infra/oauth_server.tf, which generates the key
+       once via `tls_private_key` and stores it there) - the secure,
+       production path.
     2. `MCP_OAUTH_SIGNING_KEY` - the raw PEM directly via env var, for local
        dev/testing without AWS access.
     3. An ephemeral generated key, with a loud warning - only safe for a
@@ -169,6 +169,30 @@ def _code_challenge_matches(*, code_verifier: str, code_challenge: str, method: 
     return False
 
 
+_LOOPBACK_HOSTS = {"127.0.0.1", "::1", "localhost"}
+
+
+def _redirect_uri_registered(redirect_uri: str, registered: list[str]) -> bool:
+    """Exact match, except loopback interface URIs (RFC 8252 section 7.3) -
+    native/CLI clients (confirmed: VS Code) bind a fresh ephemeral port per
+    connection attempt, so the port used at /oauth/authorize time often
+    differs from whatever port was live when the client called
+    /oauth/register earlier. The RFC requires matching those ignoring port,
+    comparing only scheme/host/path.
+    """
+    if redirect_uri in registered:
+        return True
+    requested = urlsplit(redirect_uri)
+    if requested.hostname not in _LOOPBACK_HOSTS:
+        return False
+    return any(
+        (candidate_parts := urlsplit(candidate)).scheme == requested.scheme
+        and candidate_parts.hostname == requested.hostname
+        and candidate_parts.path == requested.path
+        for candidate in registered
+    )
+
+
 async def validate_connect_credentials(
     *, domain_url: str, api_id: str, api_key: str, http_client: httpx.AsyncClient
 ) -> str | None:
@@ -212,10 +236,6 @@ def _audit(store: OAuthStore, **kwargs: Any) -> None:
 
 
 def _connect_domain_url() -> str:
-    """Platform-wide default Connect domain (MEMS_CONNECT_API_URL) - used when
-    the request's Host doesn't follow the mcp-<domain> convention (see
-    _connect_domain_url_from_request), or when no request is available.
-    """
     return os.environ.get("MEMS_CONNECT_API_URL", "").rstrip("/")
 
 
@@ -233,9 +253,6 @@ def _connect_domain_url_from_request(request: Request | None) -> str:
 
 
 def _issuer_url() -> str:
-    """Platform-wide default issuer (MCP_OAUTH_RESOURCE_SERVER_URL) - used
-    when no request is available (or its Host header is missing).
-    """
     return os.environ.get("MCP_OAUTH_RESOURCE_SERVER_URL", "").rstrip("/")
 
 
@@ -378,7 +395,7 @@ async def handle_authorize_get(request: Request) -> Response:
     client = store.get_client(client_id)
     if client is None:
         return JSONResponse({"error": "invalid_client", "error_description": "unknown client_id"}, status_code=400)
-    if client.redirect_uris and redirect_uri not in client.redirect_uris:
+    if client.redirect_uris and not _redirect_uri_registered(redirect_uri, client.redirect_uris):
         return JSONResponse({"error": "invalid_request", "error_description": "redirect_uri not registered"}, status_code=400)
 
     hidden_fields = {
@@ -471,58 +488,24 @@ def _token_response(
     return JSONResponse(body)
 
 
-def _parse_basic_auth(request: Request) -> tuple[str, str] | None:
-    """Parses an RFC 6749 `client_secret_basic` Authorization header, if
-    present - some clients (confirmed real-world behaviour: at least one
-    Zendesk ZIS connection) send client credentials this way rather than as
-    `client_id`/`client_secret` form fields, even though our discovery
-    metadata only advertises `client_secret_post`. Returns `None` if absent
-    or malformed so callers can fall back to the form body.
-    """
-    header = request.headers.get("authorization", "")
-    if not header.lower().startswith("basic "):
-        return None
-    try:
-        decoded = base64.b64decode(header[len("basic ") :].strip()).decode("utf-8")
-    except (ValueError, UnicodeDecodeError):
-        return None
-    client_id, sep, client_secret = decoded.partition(":")
-    if not sep:
-        return None
-    return client_id, client_secret
-
-
-def _reject(*, grant_type: str, error: str, description: str) -> JSONResponse:
-    """Every /oauth/token 400 goes through here so the reason is always in
-    CloudWatch - previously these were silent, requiring DynamoDB archaeology
-    to diagnose a stuck client (see e.g. the Zendesk refresh-token incident).
-    """
-    logger.warning("oauth token endpoint rejected %s grant: %s", grant_type, description)
-    return JSONResponse({"error": error, "error_description": description}, status_code=400)
-
-
-async def _handle_authorization_code_grant(
-    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
-) -> Response:
+async def _handle_authorization_code_grant(request: Request, form: Any, store: OAuthStore) -> Response:
     code = str(form.get("code", ""))
     redirect_uri = str(form.get("redirect_uri", ""))
-    client_id = str(form.get("client_id", "")) or (basic_auth[0] if basic_auth else "")
+    client_id = str(form.get("client_id", ""))
     code_verifier = form.get("code_verifier")
 
     auth_code = store.consume_auth_code(code)
     if auth_code is None:
-        return _reject(grant_type="authorization_code", error="invalid_grant", description="unknown or expired code")
+        return JSONResponse({"error": "invalid_grant", "error_description": "unknown or expired code"}, status_code=400)
     if auth_code.client_id != client_id or auth_code.redirect_uri != redirect_uri:
-        return _reject(
-            grant_type="authorization_code", error="invalid_grant", description="client_id/redirect_uri mismatch"
-        )
+        return JSONResponse({"error": "invalid_grant", "error_description": "client_id/redirect_uri mismatch"}, status_code=400)
     if auth_code.code_challenge:
         if not code_verifier or not _code_challenge_matches(
             code_verifier=str(code_verifier),
             code_challenge=auth_code.code_challenge,
             method=auth_code.code_challenge_method or "S256",
         ):
-            return _reject(grant_type="authorization_code", error="invalid_grant", description="PKCE verification failed")
+            return JSONResponse({"error": "invalid_grant", "error_description": "PKCE verification failed"}, status_code=400)
 
     _audit(store, event_type="token_issued", api_id=auth_code.api_id, client_id=client_id, detail="authorization_code")
     refresh_token = store.create_refresh_token(
@@ -533,11 +516,9 @@ async def _handle_authorization_code_grant(
     )
 
 
-async def _handle_client_credentials_grant(
-    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
-) -> Response:
-    api_id = str(form.get("client_id", "")) or (basic_auth[0] if basic_auth else "")
-    api_key = str(form.get("client_secret", "")) or (basic_auth[1] if basic_auth else "")
+async def _handle_client_credentials_grant(request: Request, form: Any, store: OAuthStore) -> Response:
+    api_id = str(form.get("client_id", ""))
+    api_key = str(form.get("client_secret", ""))
     scope = str(form.get("scope", ""))
     async with _http_client() as http_client:
         connect_token = await validate_connect_credentials(
@@ -545,7 +526,6 @@ async def _handle_client_credentials_grant(
         )
     if connect_token is None:
         _audit(store, event_type="login_failed", api_id=api_id, detail="client_credentials")
-        logger.warning("oauth token endpoint rejected client_credentials grant: invalid Connect credentials")
         return JSONResponse({"error": "invalid_client"}, status_code=401)
 
     _audit(store, event_type="token_issued", api_id=api_id, client_id=api_id, detail="client_credentials")
@@ -557,61 +537,60 @@ async def handle_token(request: Request) -> Response:
     form = await request.form()
     grant_type = str(form.get("grant_type", ""))
     store = _oauth_store()
-    basic_auth = _parse_basic_auth(request)
 
     if grant_type == "authorization_code":
-        return await _handle_authorization_code_grant(request, form, store, basic_auth)
+        return await _handle_authorization_code_grant(request, form, store)
     if grant_type == "client_credentials":
-        return await _handle_client_credentials_grant(request, form, store, basic_auth)
+        return await _handle_client_credentials_grant(request, form, store)
     if grant_type == "refresh_token":
-        return await _handle_refresh_token_grant(request, form, store, basic_auth)
-    logger.warning("oauth token endpoint rejected unsupported grant_type: %r", grant_type)
+        return await _handle_refresh_token_grant(request, form, store)
     return JSONResponse({"error": "unsupported_grant_type"}, status_code=400)
 
 
-async def _handle_refresh_token_grant(
-    request: Request, form: Any, store: OAuthStore, basic_auth: tuple[str, str] | None
-) -> Response:
+async def _handle_refresh_token_grant(request: Request, form: Any, store: OAuthStore) -> Response:
     """Lets authorization_code clients (Zendesk, VS Code) silently renew
     without repeating the interactive consent flow every
     ACCESS_TOKEN_TTL_SECONDS - see RefreshToken's docstring for why
     client_credentials callers don't need this at all.
     """
     refresh_token = str(form.get("refresh_token", ""))
-    client_id = str(form.get("client_id", "")) or (basic_auth[0] if basic_auth else "")
+    client_id = str(form.get("client_id", ""))
 
     record = store.consume_refresh_token(refresh_token)
     if record is None:
-        return _reject(grant_type="refresh_token", error="invalid_grant", description="unknown or expired refresh_token")
+        return JSONResponse({"error": "invalid_grant", "error_description": "unknown or expired refresh_token"}, status_code=400)
     if record.client_id != client_id:
-        return _reject(
-            grant_type="refresh_token",
-            error="invalid_grant",
-            description=f"client_id mismatch (expected {record.client_id!r}, got {client_id!r})",
-        )
+        return JSONResponse({"error": "invalid_grant", "error_description": "client_id mismatch"}, status_code=400)
 
     _audit(store, event_type="token_refreshed", api_id=record.api_id, client_id=client_id)
-    if layer2_fallback_enabled():
-        # Otherwise the Layer 2 credential cache (see cache_layer2_credential)
-        # silently expires ACCESS_TOKEN_TTL_SECONDS after the last full
-        # login/client_credentials call, even though this refresh just proved
-        # the Layer 1 session is still very much alive - confirmed real-world
-        # break: Zendesk's list_whatsapp_templates started failing ~1hr after
-        # login with "No cached Layer 2 credential" despite token refresh
-        # working fine. Re-touching it here keeps it alive for as long as the
-        # client keeps refreshing, mirroring the refresh token's own sliding
-        # expiry - no re-validation against Soprano needed, just extend the TTL.
-        existing_credential = store.get_layer2_credential(record.api_id)
-        if existing_credential is not None:
-            store.put_layer2_credential(
-                api_id=record.api_id, api_key=existing_credential.api_key, ttl_seconds=ACCESS_TOKEN_TTL_SECONDS
-            )
     new_refresh_token = store.create_refresh_token(
         client_id=client_id, api_id=record.api_id, scope=record.scope, ttl_seconds=REFRESH_TOKEN_TTL_SECONDS
     )
-    return _token_response(
-        request=request, api_id=record.api_id, client_id=client_id, scope=record.scope, refresh_token=new_refresh_token
+    return _token_response(request=request, api_id=record.api_id, client_id=client_id, scope=record.scope, refresh_token=new_refresh_token)
+
+
+async def handle_authorization_server_metadata(request: Request) -> Response:
+    issuer = _issuer_url_from_request(request)
+    if not issuer:
+        return JSONResponse({"error": "oauth2.1 not configured"}, status_code=404)
+    return JSONResponse(
+        {
+            "issuer": issuer,
+            "authorization_endpoint": f"{issuer}/oauth/authorize",
+            "token_endpoint": f"{issuer}/oauth/token",
+            "registration_endpoint": f"{issuer}/oauth/register",
+            "jwks_uri": f"{issuer}/.well-known/jwks.json",
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code", "client_credentials", "refresh_token"],
+            "token_endpoint_auth_methods_supported": ["client_secret_post"],
+            "code_challenge_methods_supported": ["S256", "plain"],
+            "scopes_supported": ["message.send", "message.status.read"],
+        }
     )
+
+
+async def handle_jwks(_: Request) -> Response:
+    return JSONResponse(jwks_document())
 
 
 # RFC 7591 grant types this server can actually satisfy for a dynamically
@@ -629,8 +608,8 @@ async def handle_register(request: Request) -> Response:
     "none"`), regardless of what's requested: `_handle_authorization_code_grant`
     already relies on PKCE, not a client_secret, for security, so there's no
     confidential-client story to build here. `client_credentials` callers
-    don't need registration at all (see oauth_server.py's module docstring) -
-    they authenticate directly with their own Connect API ID/API KEY.
+    don't need registration at all (see this module's docstring) - they
+    authenticate directly with their own Connect API ID/API KEY.
     """
     try:
         body = await request.json()
@@ -692,27 +671,3 @@ async def handle_register(request: Request) -> Response:
         },
         status_code=201,
     )
-
-
-async def handle_authorization_server_metadata(request: Request) -> Response:
-    issuer = _issuer_url_from_request(request)
-    if not issuer:
-        return JSONResponse({"error": "oauth2.1 not configured"}, status_code=404)
-    return JSONResponse(
-        {
-            "issuer": issuer,
-            "authorization_endpoint": f"{issuer}/oauth/authorize",
-            "token_endpoint": f"{issuer}/oauth/token",
-            "registration_endpoint": f"{issuer}/oauth/register",
-            "jwks_uri": f"{issuer}/.well-known/jwks.json",
-            "response_types_supported": ["code"],
-            "grant_types_supported": ["authorization_code", "client_credentials", "refresh_token"],
-            "token_endpoint_auth_methods_supported": ["client_secret_post", "client_secret_basic"],
-            "code_challenge_methods_supported": ["S256", "plain"],
-            "scopes_supported": ["message.send", "message.status.read"],
-        }
-    )
-
-
-async def handle_jwks(_: Request) -> Response:
-    return JSONResponse(jwks_document())

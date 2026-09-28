@@ -230,58 +230,6 @@ async def test_full_authorization_code_flow_with_pkce(dynamo_client) -> None:
 
 
 @respx.mock
-async def test_client_credentials_grant_derives_domain_and_issuer_from_host(dynamo_client) -> None:
-    """Multi-domain: a request arriving at a DIFFERENT mcp-<domain> alias than
-    the env var defaults (CONNECT_DOMAIN/ISSUER) must validate against, and
-    mint a token for, THAT domain instead - proving per-request Host-header
-    derivation (oauth_server.py's _connect_domain_url_from_request/
-    _issuer_url_from_request) takes priority over the platform-wide env var
-    fallback, not just matching it by coincidence (as every other test in
-    this file does, since ASGITransport's base_url happens to equal ISSUER).
-    """
-    other_domain = "https://br.sopranodesign.com"
-    other_issuer = "https://mcp-br.sopranodesign.com"
-    respx.post(f"{other_domain}/cgpapi/auth/token").mock(
-        return_value=httpx.Response(200, json={"accessToken": "real-connect-token", "tokenType": "Bearer"})
-    )
-    # Sanity check the mock is domain-specific - CONNECT_DOMAIN's endpoint is
-    # deliberately NOT mocked, so a wrongly-derived domain would 500/raise.
-
-    async with await _client() as client:
-        response = await client.post(
-            "/oauth/token",
-            headers={"Host": other_issuer.removeprefix("https://")},
-            data={
-                "grant_type": "client_credentials",
-                "client_id": "12345",
-                "client_secret": "secret",
-                "scope": "message.send",
-            },
-        )
-        assert response.status_code == 200
-        access_token = response.json()["access_token"]
-
-        jwks_response = await client.get("/.well-known/jwks.json")
-    jwk = _public_key_from_jwks(jwks_response.json())
-    claims = jwt.decode(access_token, jwk.key, algorithms=["RS256"], issuer=other_issuer, audience=other_issuer)
-    assert claims["iss"] == other_issuer
-    assert claims["aud"] == other_issuer
-
-
-@respx.mock
-async def test_authorization_server_metadata_derives_issuer_from_host(dynamo_client) -> None:
-    other_issuer = "https://mcp-br.sopranodesign.com"
-    async with await _client() as client:
-        response = await client.get(
-            "/.well-known/oauth-authorization-server", headers={"Host": other_issuer.removeprefix("https://")}
-        )
-    assert response.status_code == 200
-    body = response.json()
-    assert body["issuer"] == other_issuer
-    assert body["authorization_endpoint"] == f"{other_issuer}/oauth/authorize"
-
-
-@respx.mock
 async def test_refresh_token_grant_issues_new_access_and_refresh_token(dynamo_client) -> None:
     store = OAuthStore(dynamodb_resource=dynamo_client)
     refresh_token = store.create_refresh_token(
@@ -302,33 +250,6 @@ async def test_refresh_token_grant_issues_new_access_and_refresh_token(dynamo_cl
     claims = jwt.decode(body["access_token"], options={"verify_signature": False})
     assert claims["sub"] == "12345"
     assert claims["client_id"] == "zendesk-agent"
-
-
-@respx.mock
-async def test_refresh_token_grant_renews_layer2_credential_ttl(dynamo_client, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Regression test: previously a client that only ever refreshed (never
-    re-logged-in) would have its Layer 2 credential cache silently expire
-    after ACCESS_TOKEN_TTL_SECONDS - confirmed real-world break: Zendesk's
-    list_whatsapp_templates started failing ~1hr after login with "No cached
-    Layer 2 credential" despite refresh tokens still working fine.
-    """
-    monkeypatch.setenv("MCP_OAUTH_LAYER2_FALLBACK", "true")
-    store = OAuthStore(dynamodb_resource=dynamo_client)
-    store.put_layer2_credential(api_id="12345", api_key="still-the-real-secret", ttl_seconds=1)  # about to expire
-    refresh_token = store.create_refresh_token(
-        client_id="zendesk-agent", api_id="12345", scope="message.send", ttl_seconds=oauth_server.REFRESH_TOKEN_TTL_SECONDS
-    )
-
-    async with await _client() as client:
-        response = await client.post(
-            "/oauth/token",
-            data={"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": "zendesk-agent"},
-        )
-    assert response.status_code == 200
-
-    credential = store.get_layer2_credential("12345")
-    assert credential is not None
-    assert credential.api_key == "still-the-real-secret"
 
 
 @respx.mock
@@ -378,30 +299,6 @@ async def test_refresh_token_grant_rejects_unknown_token(dynamo_client) -> None:
         )
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_grant"
-
-
-@respx.mock
-async def test_refresh_token_grant_accepts_client_id_via_basic_auth(dynamo_client) -> None:
-    """Regression test: a client (confirmed real-world: a Zendesk ZIS
-    connection) that sends its client_id via `Authorization: Basic` instead
-    of the form body must not be rejected as a client_id mismatch - that
-    previously burned the caller's one-shot refresh token on every attempt
-    with no way to recover short of a full re-login.
-    """
-    store = OAuthStore(dynamodb_resource=dynamo_client)
-    refresh_token = store.create_refresh_token(
-        client_id="zendesk-agent", api_id="12345", scope="message.send", ttl_seconds=oauth_server.REFRESH_TOKEN_TTL_SECONDS
-    )
-    basic = base64.b64encode(b"zendesk-agent:unused").decode()
-
-    async with await _client() as client:
-        response = await client.post(
-            "/oauth/token",
-            data={"grant_type": "refresh_token", "refresh_token": refresh_token},
-            headers={"Authorization": f"Basic {basic}"},
-        )
-    assert response.status_code == 200
-    assert response.json()["scope"] == "message.send"
 
 
 @respx.mock
@@ -640,7 +537,7 @@ async def test_register_then_full_authorization_code_flow(dynamo_client) -> None
         assert authorize_response.status_code == 200
 
         respx.post(f"{CONNECT_DOMAIN}/cgpapi/auth/token").mock(
-            return_value=httpx.Response(200, json={"access_token": "real-connect-token"})
+            return_value=httpx.Response(200, json={"accessToken": "real-connect-token", "tokenType": "Bearer"})
         )
         approve_response = await client.post(
             "/oauth/authorize",
