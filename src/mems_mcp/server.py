@@ -492,7 +492,7 @@ async def send_broadcast(
     return await _client(ctx).send_broadcast(connection, request.to_payload())
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True))
 @observe_tool
 async def list_whatsapp_templates(ctx: Context) -> Any:
     """List approved WhatsApp Business (WABA) message templates.
