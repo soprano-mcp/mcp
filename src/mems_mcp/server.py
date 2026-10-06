@@ -202,17 +202,14 @@ mcp = FastMCP(
     "mems-mcp",
     instructions=(
         "Tools for sending and querying multi-channel messages (SMS, WhatsApp, RCS, Email, "
-        "Voice, Viber, Push Notifications) via the Soprano Connect API. Over the "
-        "streamable-http transport, every tool call requires Soprano connection headers on "
-        "the HTTP request: X-Soprano-Domain-Url, X-Soprano-Auth-Method "
-        "(api_key|oauth2|basic|legacy_oauth2|session_cookie), and the credential headers for the "
-        "chosen auth method (X-Soprano-Api-Id/X-Soprano-Api-Key, X-Soprano-Client-Id/"
-        "X-Soprano-Client-Secret, X-Soprano-Username/X-Soprano-Password, or "
-        "X-Soprano-Session-Cookie). session_cookie is only required by list_whatsapp_templates. "
-        "Over stdio, the equivalent SOPRANO_* environment variables are used instead. If this "
-        "server was started with MCP_CLIENT_AUTH_MODE=oauth2.1, an OAuth 2.1 bearer token is "
-        "also required on every request (Layer 1 client auth, independent of the Soprano "
-        "connection headers above)."
+        "Voice, Viber, Push Notifications) via the Soprano Connect API. When this server "
+        "enforces OAuth 2.1 (see its own /.well-known/oauth-authorization-server metadata), "
+        "callers authenticate via the standard OAuth authorization flow and a bearer token - "
+        "never by constructing or supplying raw credential headers directly. Direct/offline "
+        "integrations that bypass Layer 1 OAuth configure their own Soprano connection "
+        "credentials out-of-band (server-side env vars or trusted deployment config, never as "
+        "tool arguments or conversational input) - see this project's own README for that "
+        "setup, not relevant to an already-authenticated caller."
     ),
     stateless_http=True,
     lifespan=_lifespan,
@@ -502,10 +499,9 @@ async def list_whatsapp_templates(ctx: Context) -> Any:
     languageName, category, components, status).
 
     Auth outlier: unlike every other tool, this endpoint requires a portal
-    session cookie rather than one of the 4 standard auth methods - set
-    `X-Soprano-Auth-Method: session_cookie` and `X-Soprano-Session-Cookie:
-    <JSESSIONID value>` (or `SOPRANO_AUTH_METHOD`/`SOPRANO_SESSION_COOKIE` over
-    stdio).
+    session (not one of the 4 standard auth methods), configured server-side
+    out-of-band - never via tool arguments. Returns a clear auth error if the
+    caller's connection wasn't configured for it.
     """
     connection = _connection(ctx)
     return await _client(ctx).list_whatsapp_templates(connection)
