@@ -54,6 +54,21 @@ async def test_override_derives_resource_and_authorization_servers_from_host() -
     assert body["authorization_servers"] == ["https://mcp-br.example.com"]
 
 
+async def test_override_scopes_supported_is_never_null() -> None:
+    """Regression test: some MCP clients (e.g. VS Code's OAuth flow) call
+    .map() on scopes_supported unconditionally and crash on null - confirmed
+    live against a real deployment ("Cannot read properties of undefined
+    (reading 'map')"). Must stay an array even with no MCP_OAUTH_REQUIRED_SCOPES set.
+    """
+    app = _server().streamable_http_app()
+    override_protected_resource_route(app)
+
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as client:
+        response = await client.get("/.well-known/oauth-protected-resource")
+
+    assert response.json()["scopes_supported"] == []
+
+
 async def test_override_is_noop_when_route_absent() -> None:
     """No auth configured - the SDK never adds the route, so this must not raise."""
     app = FastMCP("no-auth-test-server", stateless_http=True).streamable_http_app()

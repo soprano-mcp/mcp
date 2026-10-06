@@ -246,7 +246,16 @@ def _connect_domain_url_from_request(request: Request | None) -> str:
     several Soprano Connect domains, each with its own mcp-<domain> alias.
     Falls back to the platform-wide MEMS_CONNECT_API_URL default when Host is
     missing/doesn't match the convention (e.g. bare ALB/CloudFront access).
+
+    MEMS_CONNECT_API_URL_STATIC=true disables this derivation entirely,
+    always using MEMS_CONNECT_API_URL instead - for deployments whose own
+    mcp-<label> hostname deliberately does NOT correspond to a real Connect
+    domain (e.g. infra/envs/kl.env.tfvars's scratch env), where Host still
+    syntactically matches the mcp- convention and would otherwise always
+    shadow the intended static override.
     """
+    if os.environ.get("MEMS_CONNECT_API_URL_STATIC", "").strip().lower() in ("1", "true", "yes"):
+        return _connect_domain_url()
     host = request.headers.get("host") if request is not None else None
     derived = derive_domain_from_host(host) if host else None
     return derived if derived is not None else _connect_domain_url()
@@ -372,9 +381,12 @@ def _login_consent_form(
         f'<input type="hidden" name="{html.escape(k)}" value="{html.escape(v)}">' for k, v in hidden_fields.items()
     )
     error_html = f'<div class="alert" role="alert">{html.escape(error)}</div>' if error else ""
-    scope_html = (
-        "".join(f"<li>{html.escape(_SCOPE_DESCRIPTIONS.get(s, s))}</li>" for s in scope.split())
-        or "<li>Basic account access</li>"
+    # A client requesting no scope at all still gets a token with full tool
+    # access (no per-scope enforcement yet, see _SCOPE_DESCRIPTIONS' own
+    # docstring above) - so an empty scope must list every real scope
+    # description here too, not a vague "basic access" that understates it.
+    scope_html = "".join(
+        f"<li>{html.escape(_SCOPE_DESCRIPTIONS.get(s, s))}</li>" for s in (scope.split() or _SCOPE_DESCRIPTIONS)
     )
     return _CONSENT_FORM_TEMPLATE.substitute(
         client_name=html.escape(client_name),

@@ -148,6 +148,23 @@ async def test_authorize_get_renders_login_form(dynamo_client) -> None:
 
 
 @respx.mock
+async def test_authorize_get_with_no_scope_lists_full_access_not_vague_basic_access(dynamo_client) -> None:
+    """A client requesting no scope still gets a token with full tool access
+    (no per-scope enforcement yet) - the consent screen must say so plainly
+    instead of a vague "Basic account access" that understates it.
+    """
+    async with await _client() as client:
+        response = await client.get(
+            "/oauth/authorize",
+            params={"response_type": "code", "client_id": "zendesk-agent", "redirect_uri": REDIRECT_URI},
+        )
+    assert response.status_code == 200
+    assert "Basic account access" not in response.text
+    assert "Send messages across all channels" in response.text
+    assert "Read message and batch delivery status" in response.text
+
+
+@respx.mock
 async def test_authorize_get_unknown_client_rejected(dynamo_client) -> None:
     async with await _client() as client:
         response = await client.get(
@@ -227,6 +244,39 @@ async def test_full_authorization_code_flow_with_pkce(dynamo_client) -> None:
             },
         )
     assert replay_response.status_code == 200
+
+
+@respx.mock
+async def test_authorize_post_uses_static_domain_when_forced(dynamo_client, monkeypatch: pytest.MonkeyPatch) -> None:
+    """MEMS_CONNECT_API_URL_STATIC=true disables Host-header derivation
+    entirely - for scratch/test deployments whose own mcp-<label> hostname
+    deliberately does NOT correspond to a real Connect domain (the
+    server's own hostname is not actually that label's Connect API).
+    Without this flag, the Host still syntactically matches the mcp-
+    convention and login validates against the wrong (nonexistent) domain,
+    rejecting correct credentials - confirmed live on a scratch deployment
+    ("Invalid Connect API ID or API Key" despite correct credentials).
+    """
+    monkeypatch.setenv("MEMS_CONNECT_API_URL_STATIC", "true")
+    scratch_issuer = "mcp-scratch.example.com"
+    respx.post(f"{CONNECT_DOMAIN}/cgpapi/auth/token").mock(
+        return_value=httpx.Response(200, json={"accessToken": "real-connect-token", "tokenType": "Bearer"})
+    )
+
+    async with await _client() as client:
+        response = await client.post(
+            "/oauth/authorize",
+            headers={"Host": scratch_issuer},
+            data={
+                "client_id": "zendesk-agent",
+                "redirect_uri": REDIRECT_URI,
+                "state": "xyz",
+                "api_id": "12345",
+                "api_key": "secret",
+                "action": "approve",
+            },
+        )
+    assert response.status_code == 302
 
 
 @respx.mock

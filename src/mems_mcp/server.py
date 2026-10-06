@@ -512,7 +512,7 @@ async def list_whatsapp_templates(ctx: Context) -> Any:
 
 
 @mcp.tool(
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)
+    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
 )
 @observe_tool
 async def upload_whatsapp_media(
@@ -531,7 +531,7 @@ async def upload_whatsapp_media(
     return await _client(ctx).upload_whatsapp_media(connection, source, file_bytes, filename, content_type)
 
 
-@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=False))
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, openWorldHint=True))
 @observe_tool
 async def delete_whatsapp_media(ctx: Context, media_id: str) -> dict[str, Any]:
     """Delete previously uploaded WhatsApp media from Facebook.

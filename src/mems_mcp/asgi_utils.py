@@ -41,7 +41,10 @@ async def _protected_resource_metadata(request: Request) -> Response:
             "resource": resource,
             "authorization_servers": [resource] if resource else [],
             "bearer_methods_supported": ["header"],
-            "scopes_supported": required_scopes or None,
+            # Must stay an array (never null) - some MCP clients (e.g. VS
+            # Code's OAuth flow) call .map() on this field unconditionally
+            # and crash on null, confirmed live against a real deployment.
+            "scopes_supported": required_scopes,
         }
     )
 
