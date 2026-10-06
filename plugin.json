@@ -4,8 +4,7 @@
   "version": "0.1.0",
   "description": "Send and track omnichannel messages (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) through your Soprano Connect API account.",
   "author": {
-    "name": "TODO: verified OpenAI developer identity name (individual or org)",
-    "email": "TODO: support contact email",
+    "name": "Soprano Design",
     "url": "https://www.sopranodesign.com/"
   },
   "homepage": "https://www.sopranodesign.com/",
@@ -18,8 +17,8 @@
         "displayName": "Soprano Connect",
         "shortDescription": "Send SMS, WhatsApp, email and more",
         "longDescription": "Send and check the status of real-time and broadcast messages across every channel your Soprano Connect API account supports - SMS, WhatsApp, RCS, Email, Voice, Viber and Mobile Push - plus manage WhatsApp media and list approved WhatsApp templates. Requires an existing Soprano Design Connect API account with the relevant channel licenses provisioned. Intended for teams and developers already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal/API directly.",
-        "developerName": "TODO: must match your verified OpenAI developer identity",
-        "category": "TODO: pick the exact category title from the OpenAI dashboard (e.g. Productivity or Developer Tools)",
+        "developerName": "Soprano Design",
+        "category": "TODO: pick the exact category title from the OpenAI dashboard (e.g. Productivity or Developer Tools) - must match your verified developer identity's dashboard options",
         "capabilities": [
           "Send SMS, WhatsApp, RCS, Email, Voice, Viber and Push messages",
           "Send batches of messages",
@@ -28,10 +27,10 @@
           "List approved WhatsApp message templates",
           "Upload and delete WhatsApp media"
         ],
-        "websiteURL": "TODO: required for MCP review - HTTPS product website",
-        "supportURL": "TODO: required for MCP review - HTTPS customer support page",
-        "privacyPolicyURL": "TODO: required for MCP review - HTTPS privacy policy (must disclose data categories collected, purpose, recipients, retention, user controls)",
-        "termsOfServiceURL": "TODO: required for MCP review - HTTPS terms of service",
+        "websiteURL": "https://www.sopranodesign.com/",
+        "supportURL": "https://help.sopranodesign.com/hc/en-us",
+        "privacyPolicyURL": "https://www.sopranodesign.com/privacy/",
+        "termsOfServiceURL": "https://www.sopranodesign.com/website-terms/",
         "defaultPrompt": [
           "Send a WhatsApp message to +33612345678 letting them know their order has shipped.",
           "Check the delivery status of message ID abc123.",
