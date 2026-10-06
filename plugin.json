@@ -1,0 +1,67 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "soprano-connect",
+  "version": "0.1.0",
+  "description": "Send and track omnichannel messages (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) through your Soprano Connect API account.",
+  "author": {
+    "name": "TODO: verified OpenAI developer identity name (individual or org)",
+    "email": "TODO: support contact email",
+    "url": "https://www.sopranodesign.com/"
+  },
+  "homepage": "https://www.sopranodesign.com/",
+  "repository": "https://github.com/soprano-mcp/mcp",
+  "license": "MIT",
+  "keywords": ["sms", "whatsapp", "messaging", "rcs", "email", "voice", "omnichannel"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Soprano Connect",
+        "shortDescription": "Send SMS, WhatsApp, email and more",
+        "longDescription": "Send and check the status of real-time and broadcast messages across every channel your Soprano Connect API account supports - SMS, WhatsApp, RCS, Email, Voice, Viber and Mobile Push - plus manage WhatsApp media and list approved WhatsApp templates. Requires an existing Soprano Design Connect API account with the relevant channel licenses provisioned. Intended for teams and developers already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal/API directly.",
+        "developerName": "TODO: must match your verified OpenAI developer identity",
+        "category": "TODO: pick the exact category title from the OpenAI dashboard (e.g. Productivity or Developer Tools)",
+        "capabilities": [
+          "Send SMS, WhatsApp, RCS, Email, Voice, Viber and Push messages",
+          "Send batches of messages",
+          "Send broadcast SMS to lists, contacts and groups",
+          "Check message and batch delivery status",
+          "List approved WhatsApp message templates",
+          "Upload and delete WhatsApp media"
+        ],
+        "websiteURL": "TODO: required for MCP review - HTTPS product website",
+        "supportURL": "TODO: required for MCP review - HTTPS customer support page",
+        "privacyPolicyURL": "TODO: required for MCP review - HTTPS privacy policy (must disclose data categories collected, purpose, recipients, retention, user controls)",
+        "termsOfServiceURL": "TODO: required for MCP review - HTTPS terms of service",
+        "defaultPrompt": [
+          "Send a WhatsApp message to +33612345678 letting them know their order has shipped.",
+          "Check the delivery status of message ID abc123.",
+          "List our approved WhatsApp templates."
+        ],
+        "logo": "TODO: add a square >=48x48px PNG/JPEG/WebP/SVG and reference it here, e.g. ./assets/logo.png",
+        "composerIcon": "TODO: same requirements as logo"
+      },
+      "review": {
+        "test_cases": {
+          "positive": [
+            { "description": "TODO 1/5 - run against the real test account before submitting", "prompt": "TODO", "tools_triggered": "TODO: e.g. send_message", "expected_behavior": "TODO" },
+            { "description": "TODO 2/5", "prompt": "TODO", "tools_triggered": "TODO", "expected_behavior": "TODO" },
+            { "description": "TODO 3/5", "prompt": "TODO", "tools_triggered": "TODO", "expected_behavior": "TODO" },
+            { "description": "TODO 4/5", "prompt": "TODO", "tools_triggered": "TODO", "expected_behavior": "TODO" },
+            { "description": "TODO 5/5", "prompt": "TODO", "tools_triggered": "TODO", "expected_behavior": "TODO" }
+          ],
+          "negative": [
+            { "description": "TODO 1/3 - run against the real test account before submitting", "prompt": "TODO" },
+            { "description": "TODO 2/3", "prompt": "TODO" },
+            { "description": "TODO 3/3", "prompt": "TODO" }
+          ]
+        },
+        "demo_recording_url": "TODO: required for MCP review - accessible video walkthrough URL",
+        "commerce": false,
+        "commerce_description": "This plugin does not sell goods, process payments, or support checkout - it only sends messages via the Soprano Connect API."
+      },
+      "publication": {
+        "release_notes": "Initial submission."
+      }
+    }
+  }
+}
