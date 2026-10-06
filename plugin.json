@@ -36,8 +36,8 @@
           "Check the delivery status of message ID abc123.",
           "List our approved WhatsApp templates."
         ],
-        "logo": "TODO: add a square >=48x48px PNG/JPEG/WebP/SVG and reference it here, e.g. ./assets/logo.png",
-        "composerIcon": "TODO: same requirements as logo"
+        "logo": "./images/soprano-icon-48.png",
+        "composerIcon": "./images/soprano-icon-48.png"
       },
       "review": {
         "test_cases": {
