@@ -2,7 +2,7 @@
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "soprano-connect",
   "version": "0.1.0",
-  "description": "Send and track omnichannel messages (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) through your Soprano Connect API account.",
+  "description": "Send SMS, WhatsApp & more",
   "author": {
     "name": "Soprano Design",
     "url": "https://www.sopranodesign.com/"
@@ -16,9 +16,9 @@
       "interface": {
         "displayName": "Soprano Connect",
         "shortDescription": "Send SMS, WhatsApp & more",
-        "longDescription": "Send and check the status of real-time and broadcast messages across every channel your Soprano Connect API account supports - SMS, WhatsApp, RCS, Email, Voice, Viber and Mobile Push - plus manage WhatsApp media and list approved WhatsApp templates. Requires an existing Soprano Design Connect API account with the relevant channel licenses provisioned. Intended for teams and developers already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal/API directly.",
+        "longDescription": "Send and track messages across SMS, WhatsApp, RCS, Email, Voice, Viber and Push notifications using your Soprano Connect API account. Also lists approved WhatsApp templates and manages WhatsApp media. Requires an existing Soprano Design Connect API account with the relevant channels provisioned - built for teams already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal.",
         "developerName": "Soprano Design",
-        "category": "Communication",
+        "category": "Productivity",
         "capabilities": [
           "Send SMS, WhatsApp, RCS, Email, Voice, Viber and Push messages",
           "Send batches of messages",
