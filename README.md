@@ -27,7 +27,7 @@ Soprano Connect MCP transforms communications capabilities into AI-native tools 
 
 - Send communications through any channel supported by Soprano Connect such as SMS, RCS, WhatsApp, Viber, Email, Voice, Mobile Push
 - Rich content per channel — WhatsApp (media, interactive buttons/lists, templates, location, reactions), RCS (rich cards, carousels, suggestions), Voice (text-to-speech, pre-recorded audio, Call Control Objects), Push Notification
-- Batch and broadcast sending, plus single/batch message status lookups
+- Broadcast sending, plus single/batch message status lookups
 - WhatsApp Business (WABA) template listing, and media upload/delete
 - Pluggable upstream (Soprano) authentication — API Key, OAuth2 (client credentials), Basic, Legacy OAuth2, and a session-cookie outlier for WABA templates — selected per request, credentials supplied by the caller and never stored server-side
 
@@ -194,29 +194,28 @@ All channels are exposed through one generic `send_message` tool (`channel` para
 | SMS | `sms` | Plain text only |
 | WhatsApp | `whatsapp` | Media (image/video/document/audio), interactive buttons/lists, pre-approved templates, location, reactions, context (replies) |
 | RCS | `rcs` | Rich cards, carousels, suggested replies/actions, media |
-| Email | `email` | Plain text, CC/BCC |
+| Email | `email` | Plain text |
 | Voice | `voice` | Text-to-speech, pre-recorded audio file, Call Control Objects |
-| Viber | `viber` | Plain text (rich content not documented by the Connect API guide — use the `extra` passthrough field) |
+| Viber | `viber` | Plain text (rich content not documented by the Connect API guide) |
 | Mobile Push Notification | `pushnotification` | Title + body |
 
-Anything not covered by a typed parameter can be sent via `send_message`'s `extra` field, merged verbatim into the outgoing Connect API payload.
+`send_message` sends to exactly one recipient per call (comma/semicolon-separated recipient lists are rejected). To reach many recipients, use `send_broadcast` against lists, contacts or groups already stored in your Soprano account.
 
 ## 🧰 Available Tools
 
 | Tool | Description | Maps to |
 |---|---|---|
-| **`send_message`** | Send a single real-time message on any supported channel (SMS, WhatsApp, RCS, Email, Voice, Viber, Push).<br>_Example prompt_: "Send a WhatsApp message to +33612345678 letting them know their order has shipped." | `POST /cgpapi/messages/{channel}` |
+| **`send_message`** | Send a single real-time message to one recipient on any supported channel (SMS, WhatsApp, RCS, Email, Voice, Viber, Push).<br>_Example prompt_: "Send a WhatsApp message to +33612345678 letting them know their order has shipped." | `POST /cgpapi/messages/{channel}` |
 | **`get_message_status`** | Check the delivery status of a single previously-sent message.<br>_Example prompt_: "What's the delivery status of SMS message 123456?" | `GET /cgpapi/messages/{channel}/{id}` |
-| **`send_batch`** | Send multiple messages (optionally across different channels) in one call.<br>_Example prompt_: "Send this appointment reminder as SMS to these 20 customers." | `POST /cgpapi/batch/messages` |
 | **`get_batch_status`** | Check delivery status for multiple SMS messages at once.<br>_Example prompt_: "Check the delivery status of these 10 SMS message IDs." | `POST /cgpapi/batch/messages/status` |
-| **`send_broadcast`** | Send a broadcast SMS order to lists, contacts, and/or groups.<br>_Example prompt_: "Broadcast a storm warning SMS to everyone in the 'North Region' contact list." | `POST /cgpapi/broadcast/sms` |
+| **`send_broadcast`** | Send a broadcast SMS order to lists, contacts, and/or groups already stored in your Soprano account (referenced by id; raw phone numbers are not accepted).<br>_Example prompt_: "Broadcast a storm warning SMS to everyone in the 'North Region' contact list." | `POST /cgpapi/broadcast/sms` |
 | **`list_whatsapp_templates`** | List approved WhatsApp Business (WABA) message templates.<br>_Example prompt_: "What WhatsApp templates do we have approved for order confirmations?" | `GET /cgpapi/waba/templates` |
 | **`upload_whatsapp_media`** | Upload media (image/video/document/audio) for use in WhatsApp messages.<br>_Example prompt_: "Upload this product image so I can send it via WhatsApp." | `POST /cgpapi/waba/media/{source}` |
 | **`delete_whatsapp_media`** | Delete previously uploaded WhatsApp media.<br>_Example prompt_: "Delete the WhatsApp media file we just uploaded." | `DELETE /cgpapi/waba/media/{id}` |
 
 ## 🤖 Agent Permission and Access Control
 
-Every tool is annotated with MCP's standard [tool annotations](https://modelcontextprotocol.io/specification/draft/server/tools#annotations) (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so a client can apply governance before invoking it — e.g. `send_message`/`send_batch`/`send_broadcast`/`upload_whatsapp_media` are non-read-only and reach an open world (real message delivery/spend), and `delete_whatsapp_media` is additionally flagged destructive. Since sending messages has real-world cost and reputational impact, apply your MCP client/host's permission controls (confirmation prompts, allow-lists, scoped credentials) to these tools rather than granting an agent unrestricted access — see the MCP spec's own [implementation considerations](https://modelcontextprotocol.io/specification/draft/server/tools#security-considerations) for guidance.
+Every tool is annotated with MCP's standard [tool annotations](https://modelcontextprotocol.io/specification/draft/server/tools#annotations) (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so a client can apply governance before invoking it — e.g. `send_message`/`send_broadcast`/`upload_whatsapp_media` are non-read-only and reach an open world (real message delivery/spend), and `delete_whatsapp_media` is additionally flagged destructive. Since sending messages has real-world cost and reputational impact, apply your MCP client/host's permission controls (confirmation prompts, allow-lists, scoped credentials) to these tools rather than granting an agent unrestricted access — see the MCP spec's own [implementation considerations](https://modelcontextprotocol.io/specification/draft/server/tools#security-considerations) for guidance.
 
 ## 🔐 Authentication
 
