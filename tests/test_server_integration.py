@@ -146,45 +146,23 @@ async def test_send_message_falls_back_to_soprano_env_vars_when_headers_missing(
 
 
 @respx.mock
-async def test_send_message_forwards_extra_for_rich_channel_content() -> None:
-    """Confirms the `extra` tool parameter reaches the outgoing Soprano payload
-    verbatim, so rich channel-specific content (RCS cards, WhatsApp interactive
-    messages, etc.) not covered by dedicated tool parameters can still be sent.
-    """
-    route = respx.post(f"{DOMAIN}/cgpapi/messages/rcs").mock(
-        return_value=httpx.Response(201, json={"id": 2150400271, "destination": "61299002200", "status": "ENROUTE"})
+async def test_send_message_rejects_comma_separated_destinations() -> None:
+    route = respx.post(f"{DOMAIN}/cgpapi/messages/sms").mock(return_value=httpx.Response(201, json={}))
+
+    result = await _call_tool_end_to_end(
+        "send_message", {"channel": "sms", "destination": "61299002200,61299002201", "text": "Hi"}
     )
 
-    mcp_server.settings.transport_security = TransportSecuritySettings(
-        allowed_hosts=["testserver"], allowed_origins=["http://testserver"]
-    )
-    # FastMCP lazily caches its StreamableHTTPSessionManager, which can only be
-    # `.run()` once per instance - reset it so this test gets a fresh one,
-    # since `mcp_server` is a module-level singleton shared across tests.
-    mcp_server._session_manager = None
-    app = mcp_server.streamable_http_app()
-    async with LifespanManager(app):
-        async with streamablehttp_client(
-            "http://testserver/mcp",
-            headers=CONNECTION_HEADERS,
-            httpx_client_factory=_client_factory(app),
-        ) as (read, write, _):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(
-                    "send_message",
-                    {
-                        "channel": "rcs",
-                        "destination": "61299002200",
-                        "text": "Hello",
-                        "extra": {"rcs": {"suggestions": [{"text": "Yes", "postbackData": "yes123"}]}},
-                    },
-                )
+    assert result.isError is True
+    assert not route.called
 
-        assert result.isError is False
-        assert route.called
-        sent_body = route.calls.last.request.content
-        assert json.loads(sent_body)["rcs"] == {"suggestions": [{"text": "Yes", "postbackData": "yes123"}]}
+
+async def test_send_message_does_not_expose_extra_or_email_cc_bcc() -> None:
+    tools = await mcp_server.list_tools()
+
+    properties = next(t for t in tools if t.name == "send_message").inputSchema["properties"]
+    assert not {"extra", "email_cc", "email_bcc"} & set(properties)
+    assert "send_batch" not in {t.name for t in tools}
 
 
 @respx.mock
@@ -281,31 +259,6 @@ async def test_get_message_status_end_to_end() -> None:
 
 
 @respx.mock
-async def test_send_batch_end_to_end() -> None:
-    route = respx.post(f"{DOMAIN}/cgpapi/batch/messages").mock(
-        return_value=httpx.Response(200, json=[{"id": 1, "status": "ENROUTE"}, {"id": 2, "status": "ENROUTE"}])
-    )
-
-    result = await _call_tool_end_to_end(
-        "send_batch",
-        {
-            "messages": [
-                {"channel": "sms", "destination": "61299002200", "text": "msg1"},
-                {"channel": "sms", "destination": "61299002200", "text": "msg2"},
-            ]
-        },
-    )
-
-    assert result.isError is False
-    assert route.called
-    sent_body = json.loads(route.calls.last.request.content)
-    assert sent_body == [
-        {"messageType": "sms", "destination": "61299002200", "text": "msg1"},
-        {"messageType": "sms", "destination": "61299002200", "text": "msg2"},
-    ]
-
-
-@respx.mock
 async def test_get_batch_status_end_to_end() -> None:
     route = respx.post(f"{DOMAIN}/cgpapi/batch/messages/status").mock(
         return_value=httpx.Response(200, json=[{"id": 2148226149, "status": "ACCEPTED_BY_NETWORK_ELEMENT"}])
@@ -331,6 +284,17 @@ async def test_send_broadcast_end_to_end() -> None:
     assert route.called
     sent_body = json.loads(route.calls.last.request.content)
     assert sent_body == {"message": {"text": "Hello Broadcast"}, "endpoints": [{"type": 1, "id": 211232}]}
+
+
+@respx.mock
+async def test_send_broadcast_rejects_raw_number_endpoints() -> None:
+    route = respx.post(f"{DOMAIN}/cgpapi/broadcast/sms").mock(return_value=httpx.Response(201, json={}))
+
+    result = await _call_tool_end_to_end("send_broadcast", {"text": "Hi", "endpoints": ["61491234567"]})
+    assert result.isError is True
+    result = await _call_tool_end_to_end("send_broadcast", {"text": "Hi", "endpoints": [{"type": 9, "id": 1}]})
+    assert result.isError is True
+    assert not route.called
 
 
 @respx.mock
@@ -362,3 +326,65 @@ async def test_delete_whatsapp_media_end_to_end() -> None:
 
     assert result.isError is False
     assert route.called
+
+
+@respx.mock
+async def test_list_contacts_end_to_end_returns_contact_details() -> None:
+    route = respx.get(f"{DOMAIN}/rest/contacts").mock(
+        return_value=httpx.Response(
+            200,
+            json=[{"id": 9, "firstName": "Jo", "lastName": "Smith", "mobile": "61491089858", "email": "jo@acme.com"}],
+            headers={"X-MEMS-Records-Total": "1"},
+        )
+    )
+
+    result = await _call_tool_end_to_end("list_contacts", {"last_name": "Smith"})
+
+    assert result.isError is False
+    assert result.structuredContent["items"] == [
+        {"id": 9, "name": "Jo Smith", "mobile": "61491089858", "email": "jo@acme.com"}
+    ]
+    assert result.structuredContent["total"] == 1
+    assert route.calls.last.request.url.params["lastName"] == "Smith"
+
+
+@respx.mock
+async def test_list_lists_filters_by_list_name_and_returns_null_total() -> None:
+    route = respx.get(f"{DOMAIN}/rest/lists").mock(
+        return_value=httpx.Response(200, json=[{"id": 4, "name": "Demo", "count": 0}], headers={"X-MEMS-Records-Total": "153"})
+    )
+
+    result = await _call_tool_end_to_end("list_lists", {"name": "demo"})
+
+    assert result.structuredContent["items"] == [{"id": 4, "name": "Demo"}]
+    assert result.structuredContent["total"] is None
+    assert route.calls.last.request.url.params["listName"] == "demo"
+
+
+@respx.mock
+async def test_list_groups_rejects_invalid_limit_without_calling_backend() -> None:
+    route = respx.get(f"{DOMAIN}/rest/groups").mock(return_value=httpx.Response(200, json=[]))
+
+    result = await _call_tool_end_to_end("list_groups", {"limit": 1000})
+
+    assert result.isError is True
+    assert not route.called
+
+
+async def test_lookup_tools_describe_parameters_and_paging() -> None:
+    tools = {t.name: t for t in await mcp_server.list_tools()}
+
+    for name in ("list_contacts", "list_groups", "list_lists"):
+        properties = tools[name].inputSchema["properties"]
+        assert all(p.get("description") for p in properties.values()), name
+        assert "has_more" in tools[name].description
+
+
+@respx.mock
+async def test_list_contacts_no_match_returns_empty_items() -> None:
+    respx.get(f"{DOMAIN}/rest/contacts").mock(return_value=httpx.Response(200, json=[], headers={"X-MEMS-Records-Total": "1"}))
+
+    result = await _call_tool_end_to_end("list_contacts", {"first_name": "Terry", "last_name": "Ng"})
+
+    assert result.structuredContent["items"] == []
+    assert result.structuredContent["has_more"] is False

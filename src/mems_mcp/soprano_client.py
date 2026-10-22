@@ -45,12 +45,6 @@ class SopranoClient:
         response = await self._request("GET", url, connection, operation="get_message_status")
         return response.json()
 
-    async def send_batch(self, connection: Connection, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """`POST {domain_url}/cgpapi/batch/messages` - batch mode send."""
-        url = f"{connection.domain_url}/cgpapi/batch/messages"
-        response = await self._request("POST", url, connection, operation="send_batch", json=messages)
-        return response.json()
-
     async def get_batch_status(self, connection: Connection, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """`POST {domain_url}/cgpapi/batch/messages/status` - query multiple messages' status."""
         url = f"{connection.domain_url}/cgpapi/batch/messages/status"
@@ -96,6 +90,35 @@ class SopranoClient:
         """`DELETE {domain_url}/cgpapi/waba/media/{id}` - delete media from Facebook."""
         url = f"{connection.domain_url}/cgpapi/waba/media/{media_id}"
         await self._request("DELETE", url, connection, operation="delete_whatsapp_media")
+
+    async def search_rest(
+        self, connection: Connection, resource: str, params: dict[str, Any], *, page: int, limit: int
+    ) -> tuple[list[dict[str, Any]], int | None]:
+        """`GET {domain_url}/rest/{resource}` - paged search of `contacts`, `groups` or `lists`.
+
+        Returns `(items, total)`. These live in the separate `/rest` app (not `/cgpapi`) but accept the
+        same API-key headers. `total` comes from `X-MEMS-Records-Total`, which the backend only sets on
+        page 1 (when `count=true`).
+        """
+        query: dict[str, Any] = {k: v for k, v in params.items() if v}
+        query.update({"index": page, "limit": limit})
+        if page == 1:
+            query["count"] = "true"
+        url = f"{connection.domain_url}/rest/{resource}"
+        try:
+            response = await self._request("GET", url, connection, operation=f"list_{resource}", params=query)
+        except SopranoAPIError as exc:
+            if exc.status_code == 403:
+                raise SopranoAPIError(
+                    f"{exc} - the API user may lack read permission for {resource} on the /rest API",
+                    status_code=exc.status_code,
+                    error_code=exc.error_code,
+                    error_type=exc.error_type,
+                    error_description=exc.error_description,
+                ) from exc
+            raise
+        raw_total = response.headers.get("X-MEMS-Records-Total")
+        return response.json(), int(raw_total) if raw_total is not None else None
 
     async def _request(
         self, method: str, url: str, connection: Connection, *, operation: str, **kwargs: Any

@@ -364,9 +364,12 @@ class Layer2FallbackAuth:
 _SCOPE_DESCRIPTIONS = {
     "message.send": (
         "Send messages across all channels (SMS, WhatsApp, RCS, Email, Voice, Viber, Push) - "
-        "including batch and broadcast sends, and uploading or deleting WhatsApp media"
+        "including broadcast sends to stored lists/contacts/groups, and uploading or deleting WhatsApp media"
     ),
-    "message.status.read": "Read message and batch delivery status, and list WhatsApp Business message templates",
+    "message.status.read": (
+        "Read message and batch delivery status, list WhatsApp Business message templates, "
+        "and look up stored contacts (including mobile/email), groups and lists"
+    ),
 }
 
 

@@ -28,6 +28,7 @@ Soprano Connect MCP transforms communications capabilities into AI-native tools 
 - Send communications through any channel supported by Soprano Connect such as SMS, RCS, WhatsApp, Viber, Email, Voice, Mobile Push
 - Rich content per channel — WhatsApp (media, interactive buttons/lists, templates, location, reactions), RCS (rich cards, carousels, suggestions), Voice (text-to-speech, pre-recorded audio, Call Control Objects), Push Notification
 - Broadcast sending, plus single/batch message status lookups
+- Read-only lookup of stored contacts, groups and lists, to find the ids a broadcast targets
 - WhatsApp Business (WABA) template listing, and media upload/delete
 - Pluggable upstream (Soprano) authentication — API Key, OAuth2 (client credentials), Basic, Legacy OAuth2, and a session-cookie outlier for WABA templates — selected per request, credentials supplied by the caller and never stored server-side
 
@@ -199,7 +200,7 @@ All channels are exposed through one generic `send_message` tool (`channel` para
 | Viber | `viber` | Plain text (rich content not documented by the Connect API guide) |
 | Mobile Push Notification | `pushnotification` | Title + body |
 
-`send_message` sends to exactly one recipient per call (comma/semicolon-separated recipient lists are rejected). To reach many recipients, use `send_broadcast` against lists, contacts or groups already stored in your Soprano account.
+`send_message` sends to exactly one recipient per call (comma/semicolon-separated recipient lists are rejected). To reach many recipients, use `send_broadcast` against lists, contacts or groups already stored in your Soprano account — use `list_contacts`, `list_groups` and `list_lists` to find their ids.
 
 ## 🧰 Available Tools
 
@@ -209,13 +210,26 @@ All channels are exposed through one generic `send_message` tool (`channel` para
 | **`get_message_status`** | Check the delivery status of a single previously-sent message.<br>_Example prompt_: "What's the delivery status of SMS message 123456?" | `GET /cgpapi/messages/{channel}/{id}` |
 | **`get_batch_status`** | Check delivery status for multiple SMS messages at once.<br>_Example prompt_: "Check the delivery status of these 10 SMS message IDs." | `POST /cgpapi/batch/messages/status` |
 | **`send_broadcast`** | Send a broadcast SMS order to lists, contacts, and/or groups already stored in your Soprano account (referenced by id; raw phone numbers are not accepted).<br>_Example prompt_: "Broadcast a storm warning SMS to everyone in the 'North Region' contact list." | `POST /cgpapi/broadcast/sms` |
+| **`list_contacts`** | Look up stored contacts (id, name, mobile, email) to get the ids to use as `send_broadcast` endpoints. Read-only; filter by first name, last name, mobile or email; paged (max 100 per page).<br>_Example prompt_: "Find the contact id for Jo Smith." | `GET /rest/contacts` |
+| **`list_groups`** | Look up stored contact groups (id, name). Read-only; filter by name; paged.<br>_Example prompt_: "Which groups do we have with 'alert' in the name?" | `GET /rest/groups` |
+| **`list_lists`** | Look up stored recipient lists (id, name). Read-only; filter by name; paged.<br>_Example prompt_: "What's the id of our 'Appointments' list?" | `GET /rest/lists` |
 | **`list_whatsapp_templates`** | List approved WhatsApp Business (WABA) message templates.<br>_Example prompt_: "What WhatsApp templates do we have approved for order confirmations?" | `GET /cgpapi/waba/templates` |
 | **`upload_whatsapp_media`** | Upload media (image/video/document/audio) for use in WhatsApp messages.<br>_Example prompt_: "Upload this product image so I can send it via WhatsApp." | `POST /cgpapi/waba/media/{source}` |
 | **`delete_whatsapp_media`** | Delete previously uploaded WhatsApp media.<br>_Example prompt_: "Delete the WhatsApp media file we just uploaded." | `DELETE /cgpapi/waba/media/{id}` |
 
+### Reading `list_contacts`, `list_groups` and `list_lists` results
+
+Each returns `{items, page, limit, total, has_more}`. Filters are partial, case-insensitive matches, and when several are given on `list_contacts` all of them must match. `limit` defaults to 25 (max 100).
+
+- An **empty `items`** means no matching record.
+- To get the next page, call again with `page` + 1 (and the same filters and `limit`) while `has_more` is `true`. Prefer filtering over paging through everything.
+- `total` is only known on page 1, and is `null` for `list_lists` whenever a `name` filter is used.
+- `list_contacts` returns ordinary contacts only (the backend search is restricted to that contact type); records of other contact types, such as users, are not returned.
+- Group and list names are not unique, so use the `id`.
+
 ## 🤖 Agent Permission and Access Control
 
-Every tool is annotated with MCP's standard [tool annotations](https://modelcontextprotocol.io/specification/draft/server/tools#annotations) (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so a client can apply governance before invoking it — e.g. `send_message`/`send_broadcast`/`upload_whatsapp_media` are non-read-only and reach an open world (real message delivery/spend), and `delete_whatsapp_media` is additionally flagged destructive. Since sending messages has real-world cost and reputational impact, apply your MCP client/host's permission controls (confirmation prompts, allow-lists, scoped credentials) to these tools rather than granting an agent unrestricted access — see the MCP spec's own [implementation considerations](https://modelcontextprotocol.io/specification/draft/server/tools#security-considerations) for guidance.
+Every tool is annotated with MCP's standard [tool annotations](https://modelcontextprotocol.io/specification/draft/server/tools#annotations) (`readOnlyHint`, `destructiveHint`, `openWorldHint`) so a client can apply governance before invoking it — e.g. `send_message`/`send_broadcast`/`upload_whatsapp_media` are non-read-only and reach an open world (real message delivery/spend), and `delete_whatsapp_media` is additionally flagged destructive. `list_contacts`, `list_groups` and `list_lists` are read-only, but `list_contacts` returns real mobile numbers and email addresses into the agent's context, so scope the credentials you give an agent accordingly. Since sending messages has real-world cost and reputational impact, apply your MCP client/host's permission controls (confirmation prompts, allow-lists, scoped credentials) to these tools rather than granting an agent unrestricted access — see the MCP spec's own [implementation considerations](https://modelcontextprotocol.io/specification/draft/server/tools#security-considerations) for guidance.
 
 ## 🔐 Authentication
 

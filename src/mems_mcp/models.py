@@ -5,14 +5,14 @@ Common real-time-mode fields are fully modeled and validated. Channel-specific
 rich content is modeled per-channel where the guide documents a concrete JSON
 schema (RCS `rcs`, WhatsApp `whatsapp`, Voice `voice`, `pushNotification`) -
 see the per-model docstrings below for the exact guide section each mirrors.
-Viber's rich content isn't documented in this guide at all (it points to a
-separate channel-specific guide) - for that, and for any field not otherwise
-covered, use `extra` on `SendMessageRequest`, which is merged into the
-outgoing JSON payload verbatim.
+Viber's rich content isn't documented in this guide at all, so it isn't
+modeled; there is deliberately no raw-payload passthrough (it would let a
+caller smuggle extra recipients past the single-recipient validation).
 """
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal
 
@@ -27,8 +27,8 @@ MAX_TEXT_LENGTH: dict[str, int] = {
     "viber": 4000,
 }
 
-MAX_REALTIME_DESTINATIONS = 250
 VALID_REPLY_TO_TON = {0, 1, 3, 8, 10, 12}
+_MULTI_RECIPIENT_SEPARATORS = re.compile(r"[,;\s]")
 MAX_RCS_SUGGESTIONS = 11
 
 
@@ -65,13 +65,6 @@ class MessageChannel(str, Enum):
 # - they only look for `"enum"` inlined directly on the property, so the
 # channel field silently loses its dropdown. Literal is inlined instead.
 ChannelLiteral = Literal[tuple(c.value for c in MessageChannel)]
-
-
-class EmailAddresses(BaseModel):
-    """The Connect API "email" object - CC/BCC addresses."""
-
-    cc: str | None = None
-    bcc: str | None = None
 
 
 # --- RCS rich content ("RCS Channel Parameters" section of the guide) ------
@@ -248,7 +241,7 @@ class WhatsAppContent(_CamelModel):
     `type` selects which of the other fields is populated, mirroring the
     Connect API's own discriminated-union shape (e.g. `type="image"` ->
     populate `image`). `contacts` and `sticker` are deep/rarely-used content
-    types not modeled individually here - pass their raw JSON via `extra`.
+    types not modeled individually here.
     """
 
     type: str
@@ -321,7 +314,7 @@ class SendMessageRequest(BaseModel):
     """Real-time mode send payload: `POST {domain_url}/cgpapi/messages/{channel}`."""
 
     channel: MessageChannel
-    destination: str = Field(..., description="Comma separated destinations, max 250 in real-time mode")
+    destination: str = Field(..., description="Exactly one recipient (MSISDN or email address)")
     text: str | None = None
     template_name: str | None = Field(default=None, max_length=100)
     key_values: str | None = Field(default=None, max_length=2000)
@@ -335,7 +328,6 @@ class SendMessageRequest(BaseModel):
     validity_timestamp: str | None = None
     source_presentation: str | None = Field(default=None, max_length=2000)
     subject: str | None = Field(default=None, max_length=2000)
-    email: EmailAddresses | None = None
     delay: int | None = None
     valid: int | None = None
     registered: int | None = Field(default=None, ge=0, le=5)
@@ -345,16 +337,17 @@ class SendMessageRequest(BaseModel):
     whatsapp: WhatsAppContent | None = None
     voice: VoiceContent | None = None
     push_notification: PushNotificationContent | None = None
-    extra: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("destination")
     @classmethod
-    def _check_destination_count(cls, value: str) -> str:
-        count = len([d for d in value.split(",") if d.strip()])
-        if count > MAX_REALTIME_DESTINATIONS:
+    def _check_single_destination(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("'destination' must not be empty")
+        if _MULTI_RECIPIENT_SEPARATORS.search(value):
             raise ValueError(
-                f"Real-time mode supports a maximum of {MAX_REALTIME_DESTINATIONS} comma-separated "
-                f"destinations, got {count}"
+                "'destination' must be exactly one recipient; comma/semicolon/whitespace-separated "
+                "lists are not supported - send one message per recipient"
             )
         return value
 
@@ -400,8 +393,6 @@ class SendMessageRequest(BaseModel):
         for key, value in optional_fields.items():
             if value is not None:
                 payload[key] = value
-        if self.email is not None:
-            payload["email"] = self.email.model_dump(exclude_none=True)
         if self.rcs is not None:
             payload["rcs"] = self.rcs.to_payload()
         if self.whatsapp is not None:
@@ -415,7 +406,6 @@ class SendMessageRequest(BaseModel):
             payload["voice"] = self.voice.to_payload()
         if self.push_notification is not None:
             payload["pushNotification"] = self.push_notification.to_payload()
-        payload.update(self.extra)
         return payload
 
 
@@ -429,11 +419,20 @@ class BatchStatusItem(BaseModel):
         return {"id": self.id, "messageType": self.message_type}
 
 
-class BroadcastEndpoint(BaseModel):
-    """A single Connect API broadcast "endpoint" (list, contact or group reference)."""
+class BroadcastEndpointType(int, Enum):
+    CONTACT = 1
+    GROUP = 2
+    LIST = 3
 
-    type: int
-    id: int
+
+class BroadcastEndpoint(BaseModel):
+    """A single Connect API broadcast "endpoint" - a reference to a stored contact, group or list."""
+
+    type: BroadcastEndpointType
+    id: int = Field(..., gt=0)
+
+    def to_payload(self) -> dict[str, int]:
+        return {"type": int(self.type), "id": self.id}
 
 
 class BroadcastBatchOptions(BaseModel):
@@ -463,7 +462,7 @@ class SendBroadcastRequest(BaseModel):
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "message": {"text": self.text},
-            "endpoints": [e.model_dump() for e in self.endpoints],
+            "endpoints": [e.to_payload() for e in self.endpoints],
         }
         if self.registered is not None:
             payload["registered"] = str(self.registered).lower()

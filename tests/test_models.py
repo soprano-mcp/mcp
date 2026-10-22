@@ -32,10 +32,24 @@ def test_send_message_request_enforces_sms_length_limit() -> None:
         SendMessageRequest(channel=MessageChannel.SMS, destination="61299002200", text="a" * 1401)
 
 
-def test_send_message_request_enforces_max_destinations() -> None:
-    destinations = ",".join(f"612990022{n:02d}" for n in range(251))
-    with pytest.raises(ValidationError, match="maximum of 250"):
-        SendMessageRequest(channel=MessageChannel.SMS, destination=destinations, text="Hello")
+@pytest.mark.parametrize(
+    "destination",
+    ["61299002200,61299002201", "61299002200;61299002201", "61299002200 61299002201", "a@b.com, c@d.com", "   ", ""],
+)
+def test_send_message_request_rejects_multiple_or_empty_destinations(destination: str) -> None:
+    with pytest.raises(ValidationError):
+        SendMessageRequest(channel=MessageChannel.SMS, destination=destination, text="Hello")
+
+
+def test_send_message_request_ignores_unknown_fields_like_extra_and_cc() -> None:
+    request = SendMessageRequest(
+        channel=MessageChannel.SMS,
+        destination="61299002200",
+        text="Hello",
+        extra={"destination": "61299002200,61299002201"},
+        email={"cc": "a@b.com"},
+    )
+    assert request.to_payload() == {"messageType": "sms", "destination": "61299002200", "text": "Hello"}
 
 
 def test_send_message_request_validates_reply_to_ton() -> None:
@@ -57,15 +71,15 @@ def test_send_message_request_includes_optional_fields_only_when_set() -> None:
     assert "templateName" not in payload
 
 
-def test_send_message_request_merges_extra_for_rich_channel_content() -> None:
+def test_send_message_request_serializes_rcs_suggestions() -> None:
     request = SendMessageRequest(
         channel=MessageChannel.RCS,
         destination="61299002200",
         text="Hello",
-        extra={"rcs": {"suggestions": [{"text": "Yes", "postbackData": "yes123"}]}},
+        rcs={"text": "Hello", "suggestions": [{"text": "Yes", "postback_data": "yes123"}]},
     )
     payload = request.to_payload()
-    assert payload["rcs"] == {"suggestions": [{"text": "Yes", "postbackData": "yes123"}]}
+    assert payload["rcs"]["suggestions"] == [{"text": "Yes", "postbackData": "yes123"}]
 
 
 def test_batch_status_item_payload() -> None:
@@ -94,6 +108,12 @@ def test_send_broadcast_request_includes_batch_options() -> None:
     payload = request.to_payload()
     assert payload["registered"] == "true"
     assert payload["batchOptions"] == {"batchSize": 100, "sleepDuration": 5}
+
+
+@pytest.mark.parametrize("bad", [{"type": 0, "id": 1}, {"type": 4, "id": 1}, {"type": 1, "id": 0}, "61491234567"])
+def test_broadcast_endpoint_rejects_non_reference_values(bad: object) -> None:
+    with pytest.raises(ValidationError):
+        BroadcastEndpoint.model_validate(bad)
 
 
 # --- RCS rich content -------------------------------------------------------

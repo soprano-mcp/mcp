@@ -29,7 +29,7 @@ import os
 import ssl
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Annotated, Any
 
 import httpx
 import truststore
@@ -39,10 +39,12 @@ from mcp.server.auth.settings import AuthSettings
 from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
+from pydantic import Field
 from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from mems_mcp import recipients
 from mems_mcp.auth import oauth_server
 from mems_mcp.auth.mcp_oauth import JWTBearerTokenVerifier
 from mems_mcp.connection import (
@@ -59,7 +61,6 @@ from mems_mcp.models import (
     BroadcastBatchOptions,
     BroadcastEndpoint,
     ChannelLiteral,
-    EmailAddresses,
     PushNotificationContent,
     RcsContent,
     SendBroadcastRequest,
@@ -353,20 +354,20 @@ async def send_message(
     registered: int | None = None,
     launch_timestamp: str | None = None,
     subject: str | None = None,
-    email_cc: str | None = None,
-    email_bcc: str | None = None,
     rcs: dict[str, Any] | None = None,
     whatsapp: dict[str, Any] | None = None,
     voice: dict[str, Any] | None = None,
     push_notification: dict[str, Any] | None = None,
-    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Send a single real-time message via the Soprano Connect API.
+    """Send a single real-time message to ONE recipient via the Soprano Connect API.
 
     Maps to `POST {domain_url}/cgpapi/messages/{channel}`. Returns the created
-    message summary (id, destination, status). `destination` may be a comma
-    separated list of up to 250 recipients. Either `text`, `template_name`, or
-    one of the channel-specific rich content objects below must be provided.
+    message summary (id, destination, status). `destination` must be exactly
+    one recipient (an MSISDN or email address); comma/semicolon/whitespace
+    separated lists are rejected - send one message per recipient. For
+    multiple recipients use `send_broadcast` against stored lists/contacts/
+    groups. Either `text`, `template_name`, or one of the channel-specific rich
+    content objects below must be provided.
 
     - `rcs`: RCS-only. Provide exactly one of `text`, `media`, `rich_card`
       (`{"rich_card": {"cards": [{"title": ..., "media": {"file_url": ...},
@@ -381,13 +382,7 @@ async def send_message(
     - `voice`: `{"text2voice": {"password": ..., "language": "en-AU", ...}}`, or
       `{"call_control_object": {"id": ...}}`, or `{"audio": {"url": ...}}`.
     - `push_notification`: `{"notification": {"title": ..., "body": ...}}`.
-
-    `extra` is a passthrough dict merged verbatim into the outgoing JSON payload,
-    for anything not covered by the parameters above (e.g. Viber, which has no
-    documented rich-content schema in the Connect API guide). See the "Payload
-    Parameters" section of the Connect API guide for full field details.
     """
-    email = EmailAddresses(cc=email_cc, bcc=email_bcc) if (email_cc or email_bcc) else None
     request = SendMessageRequest(
         channel=channel,
         destination=destination,
@@ -401,14 +396,12 @@ async def send_message(
         registered=registered,
         launch_timestamp=launch_timestamp,
         subject=subject,
-        email=email,
         rcs=RcsContent.model_validate(rcs) if rcs is not None else None,
         whatsapp=WhatsAppContent.model_validate(whatsapp) if whatsapp is not None else None,
         voice=VoiceContent.model_validate(voice) if voice is not None else None,
         push_notification=(
             PushNotificationContent.model_validate(push_notification) if push_notification is not None else None
         ),
-        extra=extra or {},
     )
     connection = _connection(ctx)
     result = await _client(ctx).send_message(connection, channel, request.to_payload())
@@ -424,22 +417,6 @@ async def get_message_status(ctx: Context, channel: ChannelLiteral, message_id: 
     """
     connection = _connection(ctx)
     return await _client(ctx).get_message_status(connection, channel, message_id)
-
-
-@mcp.tool(
-    annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
-)
-@observe_tool
-async def send_batch(ctx: Context, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Send multiple messages in a single batch call.
-
-    Maps to `POST {domain_url}/cgpapi/batch/messages`. Each item in `messages`
-    follows the same shape as `send_message`'s payload fields, e.g.
-    `{"channel": "sms", "destination": "...", "text": "..."}`.
-    """
-    payloads = [SendMessageRequest.model_validate(message).to_payload() for message in messages]
-    connection = _connection(ctx)
-    return await _client(ctx).send_batch(connection, payloads)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
@@ -469,11 +446,12 @@ async def send_broadcast(
     sleep_duration: int | None = None,
     max_destinations: int | None = None,
 ) -> dict[str, Any]:
-    """Send a broadcast SMS order to lists, contacts and/or groups.
+    """Send a broadcast SMS order to stored lists, contacts and/or groups.
 
     Maps to `POST {domain_url}/cgpapi/broadcast/sms`. `endpoints` is a list of
-    `{"type": <int>, "id": <int>}` references (list/contact/group). Ad-hoc
-    mobile-only destinations require at least 250 entries.
+    `{"type": <1|2|3>, "id": <int>}` references to objects already stored in
+    the Soprano account: type 1 = contact, 2 = group, 3 = list. Raw phone
+    numbers or other ad-hoc recipient lists are not accepted.
     """
     request = SendBroadcastRequest(
         text=text,
@@ -487,6 +465,88 @@ async def send_broadcast(
     )
     connection = _connection(ctx)
     return await _client(ctx).send_broadcast(connection, request.to_payload())
+
+
+_PageParam = Annotated[
+    int,
+    Field(description="1-based page number. While `has_more` is true, call again with page+1 and the same filters and limit."),
+]
+_LimitParam = Annotated[int, Field(description=f"Items per page, 1-{recipients.MAX_LIMIT}.")]
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@observe_tool
+async def list_contacts(
+    ctx: Context,
+    first_name: Annotated[str | None, Field(description="Partial, case-insensitive match on first name.")] = None,
+    last_name: Annotated[str | None, Field(description="Partial, case-insensitive match on last name.")] = None,
+    mobile: Annotated[str | None, Field(description="Partial match on mobile number, e.g. a prefix like 61.")] = None,
+    email: Annotated[str | None, Field(description="Partial match on email address.")] = None,
+    page: _PageParam = 1,
+    limit: _LimitParam = recipients.DEFAULT_LIMIT,
+) -> dict[str, Any]:
+    """Look up stored contacts, to get the ids to use as `type: 1` endpoints in `send_broadcast`.
+
+    Maps to `GET {domain_url}/rest/contacts`. Each item is `{id, name, mobile, email}` with `mobile` and
+    `email` omitted when the contact has none.
+
+    Prefer filtering over paging through everything: combine `first_name`/`last_name`/`mobile`/`email` to
+    narrow the result (all given filters must match). Returns `{items, page, limit, total, has_more}`; an empty
+    `items` means no matching contact. To get the next page call again with `page` + 1 while `has_more` is
+    true. `total` is only known on page 1. `limit` defaults to 25 (max 100).
+    """
+    recipients.validate_paging(page, limit)
+    params = {"firstName": first_name, "lastName": last_name, "mobile": mobile, "email": email}
+    items, total = await _client(ctx).search_rest(_connection(ctx), "contacts", params, page=page, limit=limit)
+    return recipients.build_page([recipients.shape_contact(i) for i in items], page=page, limit=limit, total=total)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@observe_tool
+async def list_groups(
+    ctx: Context,
+    name: Annotated[str | None, Field(description="Partial, case-insensitive match on group name.")] = None,
+    page: _PageParam = 1,
+    limit: _LimitParam = recipients.DEFAULT_LIMIT,
+) -> dict[str, Any]:
+    """Look up stored contact groups, to get the ids to use as `type: 2` endpoints in `send_broadcast`.
+
+    Maps to `GET {domain_url}/rest/groups`. Each item is `{id, name}`.
+
+    Prefer filtering by `name` over paging through everything. Returns `{items, page, limit, total, has_more}`;
+    to get the next page call again with `page` + 1 while `has_more` is true. `total` is only known on page 1.
+    `limit` defaults to 25 (max 100). Group names are not unique, so use the `id`.
+    """
+    recipients.validate_paging(page, limit)
+    items, total = await _client(ctx).search_rest(_connection(ctx), "groups", {"name": name}, page=page, limit=limit)
+    return recipients.build_page([recipients.shape_named(i) for i in items], page=page, limit=limit, total=total)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=False))
+@observe_tool
+async def list_lists(
+    ctx: Context,
+    name: Annotated[str | None, Field(description="Partial, case-insensitive match on list name.")] = None,
+    page: _PageParam = 1,
+    limit: _LimitParam = recipients.DEFAULT_LIMIT,
+) -> dict[str, Any]:
+    """Look up stored recipient lists, to get the ids to use as `type: 3` endpoints in `send_broadcast`.
+
+    Maps to `GET {domain_url}/rest/lists`. Each item is `{id, name}`.
+
+    Prefer filtering by `name` over paging through everything. Returns `{items, page, limit, total, has_more}`;
+    to get the next page call again with `page` + 1 while `has_more` is true. `total` is only known on page 1
+    and is null whenever a `name` filter is used. `limit` defaults to 25 (max 100). List names are not unique,
+    so use the `id`.
+    """
+    recipients.validate_paging(page, limit)
+    items, total = await _client(ctx).search_rest(
+        _connection(ctx), "lists", {"listName": name}, page=page, limit=limit
+    )
+    # Total is only returned for the unfiltered list.
+    return recipients.build_page(
+        [recipients.shape_named(i) for i in items], page=page, limit=limit, total=None if name else total
+    )
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True))

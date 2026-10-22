@@ -16,12 +16,13 @@
       "interface": {
         "displayName": "Soprano Connect",
         "shortDescription": "Send SMS, WhatsApp & more",
-        "longDescription": "Send and track messages across SMS, WhatsApp, RCS, Email, Voice, Viber and Push notifications using your Soprano Connect API account. Also lists approved WhatsApp templates and manages WhatsApp media. Requires an existing Soprano Design Connect API account with the relevant channels provisioned - built for teams already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal.",
+        "longDescription": "Send and track messages across SMS, WhatsApp, RCS, Email, Voice, Viber and Push notifications using your Soprano Connect API account. Also looks up stored contacts, groups and lists (to find broadcast recipients), lists approved WhatsApp templates and manages WhatsApp media. Requires an existing Soprano Design Connect API account with the relevant channels provisioned - built for teams already using Soprano Connect who want to trigger messages conversationally instead of through the Connect portal.",
         "developerName": "Soprano Design",
         "category": "Communication",
         "capabilities": [
           "Send SMS, WhatsApp, RCS, Email, Voice, Viber and Push messages",
           "Send broadcast SMS to lists, contacts and groups",
+          "Look up stored contacts, groups and lists",
           "Check message and batch delivery status",
           "List approved WhatsApp message templates",
           "Upload and delete WhatsApp media"
@@ -44,6 +45,7 @@
             { "description": "Send a single SMS", "prompt": "Send a text message to +61412345678 letting them know their appointment is confirmed for tomorrow at 10am.", "tools_triggered": "send_message", "expected_behavior": "Sends one SMS via the Connect API and returns the created message's id, destination and status." },
             { "description": "Send a WhatsApp message", "prompt": "Send a WhatsApp message to +33612345678 letting them know their order has shipped.", "tools_triggered": "send_message", "expected_behavior": "Sends one WhatsApp message via the Connect API and returns the created message's id, destination and status." },
             { "description": "Check message delivery status", "prompt": "What's the delivery status of message abc123?", "tools_triggered": "get_message_status", "expected_behavior": "Returns the current status (e.g. delivered, failed, pending) of the specified message id." },
+            { "description": "Look up stored groups", "prompt": "Which contact groups do we have set up?", "tools_triggered": "list_groups", "expected_behavior": "Returns the account's stored groups as id and name pairs, paged." },
             { "description": "List approved WhatsApp templates", "prompt": "List our approved WhatsApp message templates.", "tools_triggered": "list_whatsapp_templates", "expected_behavior": "Returns the account's approved WABA templates with name, language and status." }
           ],
           "negative": [

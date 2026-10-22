@@ -45,30 +45,6 @@ async def test_get_message_status_queries_channel_and_id() -> None:
 
 
 @respx.mock
-async def test_send_batch_posts_array_payload() -> None:
-    respx.post(f"{DOMAIN}/cgpapi/batch/messages").mock(
-        return_value=httpx.Response(
-            200,
-            json=[
-                {"id": 1, "status": "ENROUTE"},
-                {"id": 2, "status": "ENROUTE"},
-            ],
-        )
-    )
-    async with httpx.AsyncClient() as http_client:
-        client = SopranoClient(http_client)
-        result = await client.send_batch(
-            _connection(),
-            [
-                {"messageType": "sms", "destination": "61299002200", "text": "msg1"},
-                {"messageType": "sms", "destination": "61299002200", "text": "msg2"},
-            ],
-        )
-
-    assert result == [{"id": 1, "status": "ENROUTE"}, {"id": 2, "status": "ENROUTE"}]
-
-
-@respx.mock
 async def test_get_batch_status_posts_ids() -> None:
     respx.post(f"{DOMAIN}/cgpapi/batch/messages/status").mock(
         return_value=httpx.Response(200, json=[{"id": 2148226149, "status": "ACCEPTED_BY_NETWORK_ELEMENT"}])
